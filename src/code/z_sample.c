@@ -16,7 +16,8 @@ void Sample_Draw(SampleState* this) {
     gSPSegment(POLY_OPA_DISP++, 0x00, NULL);
     gSPSegment(POLY_OPA_DISP++, 0x01, this->staticSegment);
 
-    Gfx_SetupFrame(gfxCtx, 0, 0, 0);
+    Gfx_SetupFrame(gfxCtx, true, 0, 0, 0);
+    Gfx_ClearZBuffer(gfxCtx);
 
     view->flags = VIEW_VIEWING | VIEW_VIEWPORT | VIEW_PROJECTION_PERSPECTIVE;
     View_Apply(view, VIEW_ALL);

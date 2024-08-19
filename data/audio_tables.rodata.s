@@ -9,18 +9,14 @@
 
 .balign 16
 
-.balign 16
 glabel gSoundFontTable
-    .incbin "assets/sound/table_font.bin"
+    .incbin "baseroms/gc-eu-mq-dbg/baserom-decompressed.z64", 0xBCC270, 0x270
 
-.balign 16
 glabel gSequenceFontTable
-    .incbin "assets/sound/table_seqfont.bin"
+    .incbin "baseroms/gc-eu-mq-dbg/baserom-decompressed.z64", 0xBCC4E0, 0x1C0
 
-.balign 16
 glabel gSequenceTable
-    .incbin "assets/sound/table_seq.bin"
+    .incbin "baseroms/gc-eu-mq-dbg/baserom-decompressed.z64", 0xBCC6A0, 0x6F0
 
-.balign 16
 glabel gSampleBankTable
-    .incbin "assets/sound/table_sample.bin"
+    .incbin "baseroms/gc-eu-mq-dbg/baserom-decompressed.z64", 0xBCCD90, 0x80

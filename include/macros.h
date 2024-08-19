@@ -14,7 +14,6 @@
 #define VIRTUAL_TO_PHYSICAL(addr) (uintptr_t)((u8*)(addr) - 0x80000000)
 #define SEGMENTED_TO_VIRTUAL(addr) PHYSICAL_TO_VIRTUAL(gSegments[SEGMENT_NUMBER(addr)] + SEGMENT_OFFSET(addr))
 
-#define SQ(x) ((x)*(x))
 #define ABS(x) ((x) >= 0 ? (x) : -(x))
 #define DECR(x) ((x) == 0 ? 0 : --(x))
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : (x) > (max) ? (max) : (x))
@@ -30,10 +29,6 @@
     (void)0
 
 #define RGBA8(r, g, b, a) ((((r) & 0xFF) << 24) | (((g) & 0xFF) << 16) | (((b) & 0xFF) << 8) | (((a) & 0xFF) << 0))
-
-#define GET_PLAYER(play) ((Player*)(play)->actorCtx.actorLists[ACTORCAT_PLAYER].head)
-
-#define GET_ACTIVE_CAM(play) ((play)->cameraPtrs[(play)->activeCamId])
 
 #define LINK_IS_ADULT (gSaveContext.save.linkAge == LINK_AGE_ADULT)
 #define LINK_IS_CHILD (gSaveContext.save.linkAge == LINK_AGE_CHILD)
@@ -125,22 +120,22 @@
 #endif
 
 #if IS_DEBUG
-#define LOG(exp, value, format, file, line)         \
+#define LOG(exp, value, format, ...)                \
     do {                                            \
-        LogUtils_LogThreadId(file, line);           \
+        LogUtils_LogThreadId(__FILE__, __LINE__);   \
         osSyncPrintf(exp " = " format "\n", value); \
     } while (0)
 #else
-#define LOG(exp, value, format, file, line) (void)(value)
+#define LOG(exp, value, format, ...) (void)(value)
 #endif
 
-#define LOG_STRING(string, file, line) LOG(#string, string, "%s", file, line)
-#define LOG_ADDRESS(exp, value, file, line) LOG(exp, value, "%08x", file, line)
-#define LOG_TIME(exp, value, file, line) LOG(exp, value, "%lld", file, line)
-#define LOG_NUM(exp, value, file, line) LOG(exp, value, "%d", file, line)
-#define LOG_HEX(exp, value, file, line) LOG(exp, value, "%x", file, line)
-#define LOG_HEX32(exp, value, file, line) LOG(exp, value, "%08x", file, line)
-#define LOG_FLOAT(exp, value, file, line) LOG(exp, value, "%f", file, line)
+#define LOG_STRING(string, ...) LOG(#string, string, "%s", __VA_ARGS__)
+#define LOG_ADDRESS(exp, value, ...) LOG(exp, value, "%08x", __VA_ARGS__)
+#define LOG_TIME(exp, value, ...) LOG(exp, value, "%lld", __VA_ARGS__)
+#define LOG_NUM(exp, value, ...) LOG(exp, value, "%d", __VA_ARGS__)
+#define LOG_HEX(exp, value, ...) LOG(exp, value, "%x", __VA_ARGS__)
+#define LOG_HEX32(exp, value, ...) LOG(exp, value, "%08x", __VA_ARGS__)
+#define LOG_FLOAT(exp, value, ...) LOG(exp, value, "%f", __VA_ARGS__)
 
 #define SET_NEXT_GAMESTATE(curState, newInit, newStruct) \
     do {                                                 \
@@ -169,79 +164,86 @@ extern struct GraphicsContext* __gfxCtx;
 #define POLY_OPA_DISP   __gfxCtx->polyOpa.p
 #define POLY_XLU_DISP   __gfxCtx->polyXlu.p
 #define OVERLAY_DISP    __gfxCtx->overlay.p
+#define DEBUG_DISP      __gfxCtx->debug.p
 
 #if IS_DEBUG
 
 // __gfxCtx shouldn't be used directly.
 // Use the DISP macros defined above when writing to display buffers.
-#define OPEN_DISPS(gfxCtx, file, line) \
-    {                                  \
-        GraphicsContext* __gfxCtx;     \
-        Gfx* dispRefs[4];              \
-        __gfxCtx = gfxCtx;             \
-        (void)__gfxCtx;                \
-        Graph_OpenDisps(dispRefs, gfxCtx, file, line)
+#define OPEN_DISPS(gfxCtx, ...)         \
+    {                                   \
+        GraphicsContext* __gfxCtx;      \
+        Gfx* dispRefs[4];               \
+        __gfxCtx = gfxCtx;              \
+        (void)__gfxCtx;                 \
+        Graph_OpenDisps(dispRefs, gfxCtx, __FILE__, __LINE__)
 
-#define CLOSE_DISPS(gfxCtx, file, line)                 \
-        Graph_CloseDisps(dispRefs, gfxCtx, file, line); \
-    }                                                   \
+#define CLOSE_DISPS(gfxCtx, ...)                                \
+        Graph_CloseDisps(dispRefs, gfxCtx, __FILE__, __LINE__); \
+    }                                                           \
     (void)0
 
 #define GRAPH_ALLOC(gfxCtx, size) Graph_Alloc(gfxCtx, size)
-#define MATRIX_TO_MTX(gfxCtx, file, line) Matrix_ToMtx(gfxCtx, file, line)
-#define MATRIX_NEW(gfxCtx, file, line) Matrix_NewMtx(gfxCtx, file, line)
-#define MATRIX_CHECK_FLOATS(mtx, file, line) Matrix_CheckFloats(mtx, file, line)
-#define DMA_REQUEST_SYNC(ram, vrom, size, file, line) DmaMgr_RequestSyncDebug(ram, vrom, size, file, line)
-#define DMA_REQUEST_ASYNC(req, ram, vrom, size, unk5, queue, msg, file, line) DmaMgr_RequestAsyncDebug(req, ram, vrom, size, unk5, queue, msg, file, line)
-#define GAME_STATE_ALLOC(gameState, size, file, line) GameState_Alloc(gameState, size, file, line)
-#define DEBUG_ARENA_MALLOC(size, file, line) DebugArena_MallocDebug(size, file, line)
-#define DEBUG_ARENA_MALLOC_R(size, file, line) DebugArena_MallocRDebug(size, file, line)
-#define DEBUG_ARENA_FREE(size, file, line) DebugArena_FreeDebug(size, file, line)
-#define SYSTEM_ARENA_MALLOC(size, file, line) SystemArena_MallocDebug(size, file, line)
-#define SYSTEM_ARENA_MALLOC_R(size, file, line) SystemArena_MallocRDebug(size, file, line)
-#define SYSTEM_ARENA_FREE(size, file, line) SystemArena_FreeDebug(size, file, line)
-#define ZELDA_ARENA_MALLOC(size, file, line) ZeldaArena_MallocDebug(size, file, line)
-#define ZELDA_ARENA_MALLOC_R(size, file, line) ZeldaArena_MallocRDebug(size, file, line)
-#define ZELDA_ARENA_FREE(size, file, line) ZeldaArena_FreeDebug(size, file, line)
-#define LOG_UTILS_CHECK_NULL_POINTER(exp, ptr, file, line) LogUtils_CheckNullPointer(exp, ptr, file, line)
-#define LOG_UTILS_CHECK_VALID_POINTER(exp, ptr, file, line) LogUtils_CheckValidPointer(exp, ptr, file, line)
-#define HUNGUP_AND_CRASH(file, line) Fault_AddHungupAndCrash(file, line)
-#define GAME_ALLOC_MALLOC(alloc, size, file, line) GameAlloc_MallocDebug(alloc, size, file, line)
+#define MATRIX_TO_MTX(gfxCtx, ...) Matrix_ToMtx(gfxCtx, __FILE__, __LINE__)
+#define MATRIX_NEW(gfxCtx, ...) Matrix_NewMtx(gfxCtx, __FILE__, __LINE__)
+#define MATRIX_CHECK_FLOATS(mtx, ...) Matrix_CheckFloats(mtx, __FILE__, __LINE__)
+#define DMA_REQUEST_SYNC(ram, vrom, size, ...) DmaMgr_RequestSyncDebug(ram, vrom, size, __FILE__, __LINE__)
+#define DMA_REQUEST_ASYNC(req, ram, vrom, size, unk5, queue, msg, ...) DmaMgr_RequestAsyncDebug(req, ram, vrom, size, unk5, queue, msg, __FILE__, __LINE__)
+#define GAME_STATE_ALLOC(gameState, size, ...) GameState_Alloc(gameState, size, __FILE__, __LINE__)
+#define DEBUG_ARENA_MALLOC(size, ...) DebugArena_MallocDebug(size, __FILE__, __LINE__)
+#define DEBUG_ARENA_MALLOC_R(size, ...) DebugArena_MallocRDebug(size, __FILE__, __LINE__)
+#define DEBUG_ARENA_FREE(size, ...) DebugArena_FreeDebug(size, __FILE__, __LINE__)
+#define SYSTEM_ARENA_MALLOC(size, ...) SystemArena_MallocDebug(size, __FILE__, __LINE__)
+#define SYSTEM_ARENA_MALLOC_R(size, ...) SystemArena_MallocRDebug(size, __FILE__, __LINE__)
+#define SYSTEM_ARENA_FREE(size, ...) SystemArena_FreeDebug(size, __FILE__, __LINE__)
+#define ZELDA_ARENA_MALLOC(size, ...) ZeldaArena_MallocDebug(size, __FILE__, __LINE__)
+#define ZELDA_ARENA_MALLOC_R(size, ...) ZeldaArena_MallocRDebug(size, __FILE__, __LINE__)
+#define ZELDA_ARENA_FREE(size, ...) ZeldaArena_FreeDebug(size, __FILE__, __LINE__)
+#define LOG_UTILS_CHECK_NULL_POINTER(exp, ptr, ...) LogUtils_CheckNullPointer(exp, ptr, __FILE__, __LINE__)
+#define LOG_UTILS_CHECK_VALID_POINTER(exp, ptr, ...) LogUtils_CheckValidPointer(exp, ptr, __FILE__, __LINE__)
+#define HUNGUP_AND_CRASH(...) Fault_AddHungupAndCrash(__FILE__, __LINE__)
+#define GAME_ALLOC_MALLOC(alloc, size, ...) GameAlloc_MallocDebug(alloc, size, __FILE__, __LINE__)
 
 #else
 
-#define OPEN_DISPS(gfxCtx, file, line)      \
+#define OPEN_DISPS(gfxCtx, ...)      \
     {                                       \
         GraphicsContext* __gfxCtx = gfxCtx; \
         s32 __dispPad
 
-#define CLOSE_DISPS(gfxCtx, file, line) \
+#define CLOSE_DISPS(gfxCtx, ...) \
     (void)0;                            \
     }                                   \
     (void)0
 
 #define GRAPH_ALLOC(gfxCtx, size) ((void*)((gfxCtx)->polyOpa.d = (Gfx*)((u8*)(gfxCtx)->polyOpa.d - ALIGN16(size))))
-#define MATRIX_TO_MTX(gfxCtx, file, line) Matrix_ToMtx(gfxCtx)
-#define MATRIX_NEW(gfxCtx, file, line) Matrix_NewMtx(gfxCtx)
-#define MATRIX_CHECK_FLOATS(mtx, file, line) (mtx)
-#define DMA_REQUEST_SYNC(ram, vrom, size, file, line) DmaMgr_RequestSync(ram, vrom, size)
-#define DMA_REQUEST_ASYNC(req, ram, vrom, size, unk5, queue, msg, file, line) DmaMgr_RequestAsync(req, ram, vrom, size, unk5, queue, msg)
-#define GAME_STATE_ALLOC(gameState, size, file, line) THA_AllocTailAlign16(&(gameState)->tha, size)
-#define DEBUG_ARENA_MALLOC(size, file, line) DebugArena_Malloc(size)
-#define DEBUG_ARENA_MALLOC_R(size, file, line) DebugArena_MallocR(size)
-#define DEBUG_ARENA_FREE(size, file, line) DebugArena_Free(size)
-#define SYSTEM_ARENA_MALLOC(size, file, line) SystemArena_Malloc(size)
-#define SYSTEM_ARENA_MALLOC_R(size, file, line) SystemArena_MallocR(size)
-#define SYSTEM_ARENA_FREE(size, file, line) SystemArena_Free(size)
-#define ZELDA_ARENA_MALLOC(size, file, line) ZeldaArena_Malloc(size)
-#define ZELDA_ARENA_MALLOC_R(size, file, line) ZeldaArena_MallocR(size)
-#define ZELDA_ARENA_FREE(size, file, line) ZeldaArena_Free(size)
-#define LOG_UTILS_CHECK_NULL_POINTER(exp, ptr, file, line) (void)0
-#define LOG_UTILS_CHECK_VALID_POINTER(exp, ptr, file, line) (void)0
-#define HUNGUP_AND_CRASH(file, line) LogUtils_HungupThread(file, line)
-#define GAME_ALLOC_MALLOC(alloc, size, file, line) GameAlloc_Malloc(alloc, size)
+#define MATRIX_TO_MTX(gfxCtx, ...) Matrix_ToMtx(gfxCtx)
+#define MATRIX_NEW(gfxCtx, ...) Matrix_NewMtx(gfxCtx)
+#define MATRIX_CHECK_FLOATS(mtx, ...) (mtx)
+#define DMA_REQUEST_SYNC(ram, vrom, size, ...) DmaMgr_RequestSync(ram, vrom, size)
+#define DMA_REQUEST_ASYNC(req, ram, vrom, size, unk5, queue, msg, ...) DmaMgr_RequestAsync(req, ram, vrom, size, unk5, queue, msg)
+#define GAME_STATE_ALLOC(gameState, size, ...) THA_AllocTailAlign16(&(gameState)->tha, size)
+#define DEBUG_ARENA_MALLOC(size, ...) DebugArena_Malloc(size)
+#define DEBUG_ARENA_MALLOC_R(size, ...) DebugArena_MallocR(size)
+#define DEBUG_ARENA_FREE(size, ...) DebugArena_Free(size)
+#define SYSTEM_ARENA_MALLOC(size, ...) SystemArena_Malloc(size)
+#define SYSTEM_ARENA_MALLOC_R(size, ...) SystemArena_MallocR(size)
+#define SYSTEM_ARENA_FREE(size, ...) SystemArena_Free(size)
+#define ZELDA_ARENA_MALLOC(size, ...) ZeldaArena_Malloc(size)
+#define ZELDA_ARENA_MALLOC_R(size, ...) ZeldaArena_MallocR(size)
+#define ZELDA_ARENA_FREE(size, ...) ZeldaArena_Free(size)
+#define LOG_UTILS_CHECK_NULL_POINTER(exp, ptr, ...) (void)0
+#define LOG_UTILS_CHECK_VALID_POINTER(exp, ptr, ...) (void)0
+#define HUNGUP_AND_CRASH(...) LogUtils_HungupThread(...)
+#define GAME_ALLOC_MALLOC(alloc, size, ...) GameAlloc_Malloc(alloc, size)
 
 #endif /* IS_DEBUG */
+
+#if OOT_NTSC
+#define LANGUAGE_ARRAY(jpn, nes, ger, fra) { jpn, nes }
+#else
+#define LANGUAGE_ARRAY(jpn, nes, ger, fra) { nes, ger, fra }
+#endif
 
 /**
  * `x` vertex x
@@ -283,3 +285,50 @@ extern struct GraphicsContext* __gfxCtx;
 #endif
 
 #define IS_DEBUG_CAM_ENABLED (IS_CAMERA_DEBUG_ENABLED ? gDebugCamEnabled : false)
+
+#define IS_IN_RANGE(val, min, max) ((val >= min) && (val <= max))
+#define TIMER_DECR(val, target, changeBy) (((val - changeBy) < target) ? target : (val > target) ? (val - changeBy) : val)
+#define TIMER_INCR(val, target, changeBy) (((val + changeBy) > target) ? target : (val < target) ? (val + changeBy) : val)
+
+#ifdef __GNUC__
+#define NO_REORDER __attribute__((section(".data"))) __attribute__((no_reorder))
+#else
+#define NO_REORDER
+#endif
+
+// System for inserting SPDontSkipTexLoadsAcross for actors/effects which
+// manipulate segments to select texture indices. Note that this only needs to
+// be done for things which have a single material and which can appear multiple
+// times consecutively in the scene, such as Rupees and effects.
+#if ENABLE_F3DEX3
+
+// It might seem that we'd need to ensure this is reset every frame. But we
+// actually only care about when this changes within a frame, as the texture
+// loads would only ever be skipped between two or more rupees drawn
+// consecutively. This is s32 so it can hold an actual texture pointer in case
+// an "index" is not available.
+#define IF_F3DEX3_DONT_SKIP_TEX_INIT() \
+    static s32 _lastTexIndex = -1; \
+    (void)0
+
+// If we have consecutive items rendering with different textures, F3DEX3's
+// optimizer will incorrectly believe the texture loads can be skipped, so this
+// command tells it not to skip them. However, if the texture really is the same
+// as last time, then we can let the optimizer skip the load.
+#define IF_F3DEX3_DONT_SKIP_TEX_HERE(pkt, texIndex) \
+    if ((s32)(texIndex) != _lastTexIndex) { \
+        gSPDontSkipTexLoadsAcross(pkt); \
+        _lastTexIndex = (s32)(texIndex); \
+    } \
+    (void)0
+
+// In some cases we are sure things are rendered consecutively with different
+// textures, e.g. in Fire Temple fire objects.
+#define IF_F3DEX3_ALWAYS_DONT_SKIP_TEX(pkt) \
+    gSPDontSkipTexLoadsAcross(pkt)
+
+#else
+#define IF_F3DEX3_DONT_SKIP_TEX_INIT() (void)0
+#define IF_F3DEX3_DONT_SKIP_TEX_HERE(pkt, texIndex) (void)0
+#define IF_F3DEX3_ALWAYS_DONT_SKIP_TEX(pkt) (void)0
+#endif

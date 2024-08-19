@@ -249,9 +249,9 @@ void EnExRuppy_Sink(EnExRuppy* this, PlayState* play) {
     Vec3f pos;
     s32 pad;
 
-    if ((this->actor.bgCheckFlags & BGCHECKFLAG_WATER) && (this->actor.yDistToWater > 15.0f)) {
+    if ((this->actor.bgCheckFlags & BGCHECKFLAG_WATER) && (this->actor.depthInWater > 15.0f)) {
         pos = this->actor.world.pos;
-        pos.y += this->actor.yDistToWater;
+        pos.y += this->actor.depthInWater;
         this->actor.velocity.y = -1.0f;
         this->actor.gravity = -0.2f;
         EffectSsGSplash_Spawn(play, &pos, NULL, NULL, 0, 800);
@@ -379,6 +379,7 @@ void EnExRuppy_Draw(Actor* thisx, PlayState* play) {
     static void* rupeeTextures[] = {
         gRupeeGreenTex, gRupeeBlueTex, gRupeeRedTex, gRupeePinkTex, gRupeeOrangeTex,
     };
+    IF_F3DEX3_DONT_SKIP_TEX_INIT();
     s32 pad;
     EnExRuppy* this = (EnExRuppy*)thisx;
 
@@ -390,6 +391,7 @@ void EnExRuppy_Draw(Actor* thisx, PlayState* play) {
         gSPMatrix(POLY_OPA_DISP++, MATRIX_NEW(play->state.gfxCtx, "../z_en_ex_ruppy.c", 780),
                   G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
         gSPSegment(POLY_OPA_DISP++, 0x08, SEGMENTED_TO_VIRTUAL(rupeeTextures[this->colorIdx]));
+        IF_F3DEX3_DONT_SKIP_TEX_HERE(POLY_OPA_DISP++, this->colorIdx);
         gSPDisplayList(POLY_OPA_DISP++, gRupeeDL);
 
         CLOSE_DISPS(play->state.gfxCtx, "../z_en_ex_ruppy.c", 784);

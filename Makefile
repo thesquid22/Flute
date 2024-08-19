@@ -1,4 +1,4 @@
-MAKEFLAGS += --no-builtin-rules
+MAKEFLAGS += --no-builtin-rules --no-print-directory
 
 # Ensure the build fails if a piped command fails
 SHELL = /bin/bash
@@ -10,11 +10,13 @@ SHELL = /bin/bash
 COMPILER := gcc
 
 # Target game version. Currently only the following version is supported:
+#   gc-eu          GameCube Europe/PAL
+#   gc-eu-mq       GameCube Europe/PAL Master Quest
 #   gc-eu-mq-dbg   GameCube Europe/PAL Master Quest Debug
 #   hackeroot-mq   HackerOoT, based on gc-eu-mq-dbg (default)
 #
 # The following versions are work-in-progress and not yet matching:
-#   gc-eu-mq       GameCube Europe/PAL Master Quest
+#   gc-us          GameCube US
 #
 # Note: choosing hackeroot-mq will enable HackerOoT features,
 #       if another version is chosen, this repo will be like
@@ -40,10 +42,21 @@ RUN_CC_CHECK := 1
 
 CFLAGS ?=
 CPPFLAGS ?=
+CFLAGS_IDO ?=
+CPP_DEFINES ?=
+
+TARGET ?=
+
+ifeq ($(TARGET),wad)
+CFLAGS := -DCONSOLE_WIIVC -fno-reorder-blocks -fno-optimize-sibling-calls
+CPPFLAGS := -DCONSOLE_WIIVC
+else ifeq ($(TARGET),iso)
+CFLAGS := -DCONSOLE_GC -fno-reorder-blocks -fno-optimize-sibling-calls
+CPPFLAGS := -DCONSOLE_GC
+endif
 
 ifeq ($(COMPILER),gcc)
-  CFLAGS += -DCOMPILER_GCC -DNON_MATCHING -DAVOID_UB
-  CPPFLAGS += -DCOMPILER_GCC -DNON_MATCHING -DAVOID_UB
+  CPP_DEFINES += -DCOMPILER_GCC -DNON_MATCHING -DAVOID_UB -std=gnu11
 else
   $(error Unsupported compiler. Please use gcc as the COMPILER variable.)
 endif
@@ -54,9 +67,7 @@ endif
 # Returns the path to the command $(1) if exists. Otherwise returns an empty string.
 find-command = $(shell which $(1) 2>/dev/null)
 
-ifneq ($(call find-command,mips64-elf-ld),)
-  MIPS_BINUTILS_PREFIX := mips64-elf-
-else ifneq ($(call find-command,mips-n64-ld),)
+ifneq ($(call find-command,mips-n64-ld),)
   MIPS_BINUTILS_PREFIX := mips-n64-
 else ifneq ($(call find-command,mips64-ld),)
   MIPS_BINUTILS_PREFIX := mips64-
@@ -66,18 +77,32 @@ else ifneq ($(call find-command,mips64-linux-gnu-ld),)
   MIPS_BINUTILS_PREFIX := mips64-linux-gnu-
 else ifneq ($(call find-command,mips-ld),)
   MIPS_BINUTILS_PREFIX := mips-
+else ifneq ($(call find-command,mips64-elf-ld),)
+  MIPS_BINUTILS_PREFIX := mips64-elf-
 else
   $(error Unable to detect a suitable MIPS toolchain installed)
 endif
 
 # Version-specific settings
-ifeq ($(VERSION),gc-eu-mq)
+ifeq ($(VERSION),gc-us)
   DEBUG := 0
+  COMPARE := 0
+  CPP_DEFINES += -DOOT_NTSC=1 -DOOT_PAL=0 -DOOT_MQ=0
+else ifeq ($(VERSION),gc-eu)
+  DEBUG := 0
+  CPP_DEFINES += -DOOT_NTSC=0 -DOOT_PAL=1 -DOOT_MQ=0
+  HACKEROOT := 0
+else ifeq ($(VERSION),gc-eu-mq)
+  DEBUG := 0
+  CPP_DEFINES += -DOOT_NTSC=0 -DOOT_PAL=1 -DOOT_MQ=1
   HACKEROOT := 0
 else ifeq ($(VERSION),gc-eu-mq-dbg)
   DEBUG := 1
+  CPP_DEFINES += -DOOT_NTSC=0 -DOOT_PAL=1 -DOOT_MQ=1
   HACKEROOT := 0
 else ifeq ($(VERSION),hackeroot-mq)
+  DEBUG := 1
+  CPP_DEFINES += -DOOT_NTSC=0 -DOOT_PAL=1 -DOOT_MQ=1
   HACKEROOT := 1
 else
 $(error Unsupported version $(VERSION))
@@ -101,42 +126,26 @@ ifeq ($(origin PACKAGE_VERSION), undefined)
   endif
 endif
 
-# Set PACKAGE_AUTHOR define for printing author's git name
-ifeq ($(origin PACKAGE_AUTHOR), undefined)
-  PACKAGE_AUTHOR := $(shell git config --get user.name)
-  ifeq ('$(PACKAGE_AUTHOR)', '')
-    PACKAGE_AUTHOR = Unknown author
-  endif
-endif
-
-# Make sure the build reports the correct version
-$(shell touch src/boot/build.c)
-
 ifeq ($(VERSION),hackeroot-mq)
-  CFLAGS += -DENABLE_HACKEROOT=1
-  CPPFLAGS += -DENABLE_HACKEROOT=1
+  CPP_DEFINES += -DENABLE_HACKEROOT=1
   OPTFLAGS := -Os
 
   ifeq ($(RELEASE),1)
-    CFLAGS += -DRELEASE_ROM=1 -DOOT_DEBUG=0
-    CPPFLAGS += -DRELEASE_ROM=1 -DOOT_DEBUG=0
+    CPP_DEFINES += -DRELEASE_ROM=1 -DOOT_DEBUG=0
+    CFLAGS_IDO += -DOOT_DEBUG=0
   else
-    CFLAGS += -DRELEASE_ROM=0 -DOOT_DEBUG=1
-    CPPFLAGS += -DRELEASE_ROM=0 -DOOT_DEBUG=1
+    CPP_DEFINES += -DRELEASE_ROM=0 -DOOT_DEBUG=1
   endif
 else
   ifeq ($(DEBUG),1)
-    CFLAGS += -DOOT_DEBUG=1
-    CPPFLAGS += -DOOT_DEBUG=1
+    CPP_DEFINES += -DOOT_DEBUG=1
     OPTFLAGS := -O2
   else
-    CFLAGS += -DNDEBUG -DOOT_DEBUG=0
-    CPPFLAGS += -DNDEBUG -DOOT_DEBUG=0
+    CPP_DEFINES += -DNDEBUG -DOOT_DEBUG=0
     OPTFLAGS := -O2 -g3
   endif
 
-  CFLAGS += -DENABLE_HACKEROOT=0
-  CPPFLAGS += -DENABLE_HACKEROOT=0
+  CPP_DEFINES += -DENABLE_HACKEROOT=0
 endif
 
 # Override optimization flags if using GDB
@@ -146,8 +155,9 @@ endif
 
 # Define author and package version for every OoT version
 # Note: this won't be used if not using HackerOoT
-CFLAGS += -DPACKAGE_AUTHOR='$(PACKAGE_AUTHOR)' -DPACKAGE_VERSION='$(PACKAGE_VERSION)' -DCOMPRESS_$(COMPRESSION_TYPE)=1
-CPPFLAGS += -DPACKAGE_AUTHOR='$(PACKAGE_AUTHOR)' -DPACKAGE_VERSION='$(PACKAGE_VERSION)' -DCOMPRESS_$(COMPRESSION_TYPE)=1
+CFLAGS += -DPACKAGE_VERSION='$(PACKAGE_VERSION)' -DCOMPRESS_$(COMPRESSION_TYPE)=1
+CPPFLAGS += -DPACKAGE_VERSION='$(PACKAGE_VERSION)' -DCOMPRESS_$(COMPRESSION_TYPE)=1
+CFLAGS_IDO += -DPACKAGE_VERSION='$(PACKAGE_VERSION)' -DCOMPRESS_$(COMPRESSION_TYPE)=1
 OPTFLAGS += -ffast-math -fno-unsafe-math-optimizations
 
 ifeq ($(OS),Windows_NT)
@@ -201,12 +211,13 @@ OBJCOPY := $(MIPS_BINUTILS_PREFIX)objcopy
 OBJDUMP := $(MIPS_BINUTILS_PREFIX)objdump
 NM      := $(MIPS_BINUTILS_PREFIX)nm
 
-N64_EMULATOR ?= 
+N64_EMULATOR ?=
 
 INC := -Iinclude -Iinclude/libc -Isrc -I$(BUILD_DIR) -I. -I$(EXTRACTED_DIR)
 
 # Check code syntax with host compiler
 CHECK_WARNINGS := -Wall -Wextra -Wno-format-security -Wno-unknown-pragmas -Wno-unused-parameter -Wno-unused-variable -Wno-missing-braces
+CHECK_WARNINGS += -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -Werror=int-conversion
 
 # The `cpp` command behaves differently on macOS (it behaves as if
 # `-traditional-cpp` was passed) so we use `gcc -E` instead.
@@ -218,10 +229,24 @@ ZAPD       := tools/ZAPD/ZAPD.out
 FADO       := tools/fado/fado.elf
 PYTHON     ?= $(VENV)/bin/python3
 FLIPS      := tools/Flips/flips
+GZINJECT   := tools/gzinject/gzinject
+CC_IDO     := tools/ido_recomp/linux/5.3/cc
 
 # Command to replace path variables in the spec file. We can't use the C
 # preprocessor for this because it won't substitute inside string literals.
 SPEC_REPLACE_VARS := sed -e 's|$$(BUILD_DIR)|$(BUILD_DIR)|g'
+
+CFLAGS += $(CPP_DEFINES)
+CPPFLAGS += $(CPP_DEFINES)
+CFLAGS_IDO += $(CPP_DEFINES)
+
+# TODO PL and DOWHILE should be disabled for non-gamecube
+GBI_DEFINES := -DF3DEX_GBI_2 -DF3DEX_GBI_PL -DGBI_DOWHILE
+ifeq ($(DEBUG),1)
+  GBI_DEFINES += -DGBI_DEBUG
+endif
+
+CFLAGS += $(GBI_DEFINES)
 
 ASFLAGS := -march=vr4300 -32 -no-pad-sections -Iinclude
 
@@ -243,10 +268,12 @@ else
 endif
 ROMC     := $(ROM:.z64=-compressed-$(COMPRESSION).z64)
 WAD      := $(ROM:.z64=.wad)
+ISO      := $(ROM:.z64=.iso)
 BPS      := $(ROM:.z64=.bps)
 ELF      := $(ROM:.z64=.elf)
 MAP      := $(ROM:.z64=.map)
 LDSCRIPT := $(ROM:.z64=.ld)
+DMA_CONFIG_FILE := dma_config.txt
 # description of ROM segments
 SPEC := spec
 
@@ -257,11 +284,15 @@ ifeq ($(COMPILER),gcc)
 SRC_DIRS := $(shell find src -type d)
 endif
 
-ASSET_BIN_DIRS := $(shell find assets/* -type d -not -path "assets/xml*" -not -path "assets/text")
-ASSET_FILES_XML := $(foreach dir,$(ASSET_BIN_DIRS),$(wildcard $(dir)/*.xml))
+# create extracted directories
+$(shell mkdir -p $(EXTRACTED_DIR) $(EXTRACTED_DIR)/assets $(EXTRACTED_DIR)/text)
+
+# create extracted directories
+$(shell mkdir -p $(EXTRACTED_DIR) $(EXTRACTED_DIR)/assets $(EXTRACTED_DIR)/text)
+
+ASSET_BIN_DIRS := $(shell find $(EXTRACTED_DIR)/assets -type d)
 ASSET_FILES_BIN := $(foreach dir,$(ASSET_BIN_DIRS),$(wildcard $(dir)/*.bin))
-ASSET_FILES_OUT := $(foreach f,$(ASSET_FILES_XML:.xml=.c),$f) \
-				   $(foreach f,$(ASSET_FILES_BIN:.bin=.bin.inc.c),$(BUILD_DIR)/$f) \
+ASSET_FILES_OUT := $(foreach f,$(ASSET_FILES_BIN:.bin=.bin.inc.c),$(f:$(EXTRACTED_DIR)/%=$(BUILD_DIR)/%)) \
 				   $(foreach f,$(wildcard assets/text/*.c),$(BUILD_DIR)/$(f:.c=.o))
 
 UNDECOMPILED_DATA_DIRS := $(shell find data -type d)
@@ -269,11 +300,16 @@ UNDECOMPILED_DATA_DIRS := $(shell find data -type d)
 BASEROM_BIN_FILES := $(wildcard $(EXTRACTED_DIR)/baserom/*)
 
 # source files
-C_FILES       := $(filter-out %.inc.c,$(foreach dir,$(SRC_DIRS) $(ASSET_BIN_DIRS),$(wildcard $(dir)/*.c)))
+SRC_C_FILES   := $(filter-out %.inc.c,$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
+ASSET_C_FILES := $(filter-out %.inc.c,$(foreach dir,$(ASSET_BIN_DIRS),$(wildcard $(dir)/*.c)))
 S_FILES       := $(foreach dir,$(SRC_DIRS) $(UNDECOMPILED_DATA_DIRS),$(wildcard $(dir)/*.s))
 O_FILES       := $(foreach f,$(S_FILES:.s=.o),$(BUILD_DIR)/$f) \
-                 $(foreach f,$(C_FILES:.c=.o),$(BUILD_DIR)/$f) \
+                 $(foreach f,$(SRC_C_FILES:.c=.o),$(BUILD_DIR)/$f) \
+                 $(foreach f,$(ASSET_C_FILES:.c=.o),$(f:$(EXTRACTED_DIR)/%=$(BUILD_DIR)/%)) \
                  $(foreach f,$(BASEROM_BIN_FILES),$(BUILD_DIR)/baserom/$(notdir $f).o)
+UCODE_PATCHES := $(wildcard F3DEX3/*.bps)
+UCODE_FILES   := $(foreach f,$(UCODE_PATCHES:.bps=),$f)
+UCODE_O_FILES := $(foreach f,$(UCODE_FILES),$(BUILD_DIR)/$f.o)
 
 OVL_RELOC_FILES := $(shell $(CPP) $(CPPFLAGS) $(SPEC) | $(SPEC_REPLACE_VARS) | grep -o '[^"]*_reloc.o' )
 
@@ -284,11 +320,11 @@ DEP_FILES := $(O_FILES:.o=.asmproc.d) $(OVL_RELOC_FILES:.o=.d)
 
 TEXTURE_FILES_PNG := $(foreach dir,$(ASSET_BIN_DIRS),$(wildcard $(dir)/*.png))
 TEXTURE_FILES_JPG := $(foreach dir,$(ASSET_BIN_DIRS),$(wildcard $(dir)/*.jpg))
-TEXTURE_FILES_OUT := $(foreach f,$(TEXTURE_FILES_PNG:.png=.inc.c),$(BUILD_DIR)/$f) \
-					 $(foreach f,$(TEXTURE_FILES_JPG:.jpg=.jpg.inc.c),$(BUILD_DIR)/$f) \
+TEXTURE_FILES_OUT := $(foreach f,$(TEXTURE_FILES_PNG:.png=.inc.c),$(f:$(EXTRACTED_DIR)/%=$(BUILD_DIR)/%)) \
+					 $(foreach f,$(TEXTURE_FILES_JPG:.jpg=.jpg.inc.c),$(f:$(EXTRACTED_DIR)/%=$(BUILD_DIR)/%))
 
 # create build directories
-$(shell mkdir -p $(BUILD_DIR)/baserom $(EXTRACTED_DIR)/text $(BUILD_DIR)/assets/text $(foreach dir,$(SRC_DIRS) $(UNDECOMPILED_DATA_DIRS) $(ASSET_BIN_DIRS),$(BUILD_DIR)/$(dir)))
+$(shell mkdir -p $(BUILD_DIR)/baserom $(BUILD_DIR)/assets/text $(foreach dir,$(SRC_DIRS) $(UNDECOMPILED_DATA_DIRS),$(BUILD_DIR)/$(dir)) $(foreach dir,$(ASSET_BIN_DIRS),$(dir:$(EXTRACTED_DIR)/%=$(BUILD_DIR)/%)))
 
 ifeq ($(COMPILER),gcc)
 # Note that if adding additional assets directories for modding reasons these flags must also be used there
@@ -301,13 +337,46 @@ ifeq ($(COMPILER),gcc)
   $(BUILD_DIR)/src/overlays/actors/ovl_En_Part/%.o: OPTFLAGS := -O2
   $(BUILD_DIR)/src/overlays/actors/ovl_Item_B_Heart/%.o: OPTFLAGS := -O0
   $(BUILD_DIR)/src/overlays/actors/ovl_Bg_Mori_Hineri/%.o: OPTFLAGS := -O0
+
+# library overrides for Gamecube
+ifeq ($(TARGET),iso)
+  MIPS_VERSION_IDO := -mips2
+  CFLAGS_IDO += -G 0 -non_shared -fullwarn -verbose -Xcpluscomm $(INC) -Wab,-r4300_mul -woff 516,609,649,838,712
+  $(BUILD_DIR)/src/libultra/io/viswapbuf.o: OPTFLAGS := -O2
+  $(BUILD_DIR)/src/libultra/io/viswapbuf.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/io/viswapbuf.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/io/viswapbuf.o: CC := $(CC_IDO)
+  $(BUILD_DIR)/src/libultra/gu/sinf.o: OPTFLAGS := -O2
+  $(BUILD_DIR)/src/libultra/gu/sinf.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/gu/sinf.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/gu/sinf.o: CC := $(CC_IDO)
+  $(BUILD_DIR)/src/libultra/gu/cosf.o: OPTFLAGS := -O2
+  $(BUILD_DIR)/src/libultra/gu/cosf.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/gu/cosf.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/gu/cosf.o: CC := $(CC_IDO)
+  $(BUILD_DIR)/src/libultra/gu/perspective.o: OPTFLAGS := -O2
+  $(BUILD_DIR)/src/libultra/gu/perspective.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/gu/perspective.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/gu/perspective.o: CC := $(CC_IDO)
+  $(BUILD_DIR)/src/libultra/os/getmemsize.o: OPTFLAGS := -O1
+  $(BUILD_DIR)/src/libultra/os/getmemsize.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/os/getmemsize.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/os/getmemsize.o: CC := $(CC_IDO)
+  $(BUILD_DIR)/src/libultra/os/aisetnextbuf.o: OPTFLAGS := -O1
+  $(BUILD_DIR)/src/libultra/os/aisetnextbuf.o: MIPS_VERSION := $(MIPS_VERSION_IDO)
+  $(BUILD_DIR)/src/libultra/os/aisetnextbuf.o: CFLAGS := $(CFLAGS_IDO)
+  $(BUILD_DIR)/src/libultra/os/aisetnextbuf.o: CC := $(CC_IDO)
+endif
 endif
 
 #### Main Targets ###
 
-all: rom compress
+all: rom
 
-rom: $(ROM)
+rom:
+	$(call print,Building the rom...)
+	$(V)python3 tools/mod_assets.py --oot-version $(VERSION)
+	$(V)$(MAKE) $(ROM)
 
 compress:
 	$(call print,Compressing the rom...)
@@ -322,9 +391,22 @@ wad:
 ifeq ("$(wildcard baseroms/$(VERSION)/common-key.bin)", "")
 	$(error Please provide the common-key.bin file.)
 endif
-	$(V)$(MAKE) compress CFLAGS="-DCONSOLE_WIIVC $(CFLAGS) -fno-reorder-blocks -fno-optimize-sibling-calls" CPPFLAGS="-DCONSOLE_WIIVC $(CPPFLAGS)"
-	$(V)tools/gzinject/gzinject -a inject -r 1 -k baseroms/$(VERSION)/common-key.bin -w baseroms/$(VERSION)/basewad.wad -m $(ROMC) -o $(WAD) -t "HackerOoT" -i NHOE -p tools/gzinject/patches/NACE.gzi -p tools/gzinject/patches/gz_default_remap.gzi
+	$(V)$(MAKE) compress TARGET=wad
+	$(V)$(GZINJECT) -a inject -r 1 -k baseroms/$(VERSION)/common-key.bin -w baseroms/$(VERSION)/basewad.wad -m $(ROMC) -o $(WAD) -t "HackerOoT" -i NHOE -p tools/gzinject/patches/NACE.gzi -p tools/gzinject/patches/gz_default_remap.gzi
 	$(V)$(RM) -r wadextract/
+	$(call print,Success!)
+
+iso:
+	$(V)$(MAKE) compress TARGET=iso
+	$(call print,Patching ISO...)
+	$(V)$(PYTHON) tools/gc_utility.py -v $(VERSION) -c $(COMPRESSION)
+	$(V)$(GZINJECT) -a extract -s baseroms/$(VERSION)/baseiso.iso
+	$(V)cp $(BUILD_DIR)/$(DMA_CONFIG_FILE) isoextract/zlj_f.tgc/$(DMA_CONFIG_FILE)
+	$(V)cp $(ROMC) isoextract/zlj_f.tgc/zlj_f.n64
+	$(V)$(RM) -r isoextract/S_*.tgc/ isoextract/zlj_f.tgc/*.thp
+	$(V)$(FLIPS) --apply tools/gamecube.bps isoextract/zlj_f.tgc/main.dol isoextract/zlj_f.tgc/main.dol
+	$(V)$(GZINJECT) -a pack -s $(ISO)
+	$(V)$(RM) -r isoextract/
 	$(call print,Success!)
 
 clean:
@@ -332,17 +414,14 @@ clean:
 	$(call print,Success!)
 
 assetclean:
-	$(V)$(RM) -r $(ASSET_BIN_DIRS)
 	$(V)$(RM) -r $(EXTRACTED_DIR)
-	$(V)$(RM) -r $(BUILD_DIR)/assets
-	$(V)$(RM) -r .extracted-assets.json
 	$(call print,Success!)
 
-distclean: assetclean
+distclean:
 	$(V)$(RM) -r extracted/
 	$(V)$(RM) -r build/
 	$(V)$(MAKE) -C tools distclean
-	$(V)$(RM) -r F3DEX3/F3DEX3.code F3DEX3/F3DEX3.data
+	$(V)$(RM) -r F3DEX3/*.code F3DEX3/*.data
 	$(call print,Success!)
 
 venv:
@@ -360,41 +439,53 @@ setup: venv
 	$(call print,Tools: Done!)
 	$(V)$(PYTHON) tools/decompress_baserom.py $(VERSION)
 	$(call print,Decompressing baserom: Done!)
-	$(V)$(PYTHON) tools/extract_baserom.py $(BASEROM_DIR)/baserom-decompressed.z64 -o $(EXTRACTED_DIR)/baserom --dmadata-start `cat $(BASEROM_DIR)/dmadata_start.txt` --dmadata-names $(BASEROM_DIR)/dmadata_names.txt
-	$(V)$(PYTHON) tools/msgdis.py --oot-version $(VERSION) --text-out $(EXTRACTED_DIR)/text/message_data.h --staff-text-out $(EXTRACTED_DIR)/text/message_data_staff.h
-# TODO: for now, we only extract assets from the Debug ROM
-ifneq ($(VERSION),gc-eu-mq)
-	$(V)$(PYTHON) extract_assets.py -j$(N_THREADS) -v $(VERSION)
-endif
+	$(V)$(PYTHON) tools/extract_baserom.py $(BASEROM_DIR)/baserom-decompressed.z64 --oot-version $(VERSION) -o $(EXTRACTED_DIR)/baserom
+	$(V)$(PYTHON) tools/msgdis.py $(VERSION)
+	$(V)$(PYTHON) extract_assets.py -v $(VERSION) -j$(N_THREADS)
 	$(call print,Extracting files: Done!)
-	$(MAKE) f3dex3
-	$(call print,Success!)
 ifeq ($(VERSION),hackeroot-mq)
 # TODO: proper fix (for .s files)
 	cp baseroms/hackeroot-mq/baserom-decompressed.z64 baseroms/gc-eu-mq-dbg/baserom-decompressed.z64
 endif
 
-run: $(ROM)
+run: rom
 ifeq ($(N64_EMULATOR),)
 	$(error Emulator path not set. Set N64_EMULATOR in the Makefile or define it as an environment variable)
 endif
-	$(N64_EMULATOR) $<
+	$(N64_EMULATOR) $(ROM)
 
 patch:
 	$(call print,Creating BPS patch...)
 	$(V)$(FLIPS) --create --bps $(BASEROM_PATCH) $(ROM) $(BPS)
 	$(call print,Success!)
 
-f3dex3:
-	$(call print,Patching the microcode...)
-	$(V)$(PYTHON) tools/data_extractor.py --start 0xBCD0F0 --size 0x1630 --input $(BASEROM_DIR)/baserom-decompressed.z64 --output F3DEX3/f3dzex2.code
-	$(V)$(PYTHON) tools/data_extractor.py --start 0xBCE720 --size 0x420 --input $(BASEROM_DIR)/baserom-decompressed.z64 --output F3DEX3/f3dzex2.data
-	$(V)$(FLIPS) --apply F3DEX3/F3DEX3.code.bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3.code
-	$(V)$(FLIPS) --apply F3DEX3/F3DEX3.data.bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3.data
-	$(V)$(RM) -r F3DEX3/f3dzex2.code F3DEX3/f3dzex2.data
+create_f3dex3_patches: F3DEX3/f3dzex2.code F3DEX3/f3dzex2.data
+	$(call print,Creating F3DEX3 patches...)
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW.code F3DEX3/F3DEX3_BrW.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW.data F3DEX3/F3DEX3_BrW.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_PA.code F3DEX3/F3DEX3_BrW_PA.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_PA.data F3DEX3/F3DEX3_BrW_PA.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_PB.code F3DEX3/F3DEX3_BrW_PB.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_PB.data F3DEX3/F3DEX3_BrW_PB.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_PC.code F3DEX3/F3DEX3_BrW_PC.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_PC.data F3DEX3/F3DEX3_BrW_PC.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_NOC.code F3DEX3/F3DEX3_BrW_NOC.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_NOC.data F3DEX3/F3DEX3_BrW_NOC.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_NOC_PA.code F3DEX3/F3DEX3_BrW_NOC_PA.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_NOC_PA.data F3DEX3/F3DEX3_BrW_NOC_PA.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_NOC_PB.code F3DEX3/F3DEX3_BrW_NOC_PB.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_NOC_PB.data F3DEX3/F3DEX3_BrW_NOC_PB.data.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.code F3DEX3/F3DEX3_BrW_NOC_PC.code F3DEX3/F3DEX3_BrW_NOC_PC.code.bps
+	$(V)$(FLIPS) --create --bps F3DEX3/f3dzex2.data F3DEX3/F3DEX3_BrW_NOC_PC.data F3DEX3/F3DEX3_BrW_NOC_PC.data.bps
 	$(call print,Success!)
 
-.PHONY: all rom compress clean assetclean distclean venv setup run wad patch f3dex3
+verify:
+	$(V)$(MAKE) clean
+	$(V)$(MAKE) rom
+	@md5sum $(ROM)
+
+.PHONY: all rom compress clean assetclean distclean venv setup run wad iso patch create_f3dex3_patches verify
+
 .DEFAULT_GOAL := rom
 
 #### Various Recipes ####
@@ -414,7 +505,8 @@ else
 endif
 	$(V)$(PYTHON) -m ipl3checksum sum --cic 6105 --update $@
 
-$(ELF): $(TEXTURE_FILES_OUT) $(ASSET_FILES_OUT) $(O_FILES) $(OVL_RELOC_FILES) $(LDSCRIPT) $(BUILD_DIR)/undefined_syms.txt
+$(ELF): $(TEXTURE_FILES_OUT) $(ASSET_FILES_OUT) $(O_FILES) $(OVL_RELOC_FILES) $(UCODE_O_FILES) $(LDSCRIPT) $(BUILD_DIR)/undefined_syms.txt
+	$(call print,Linking:,,$@)
 	$(V)$(LD) -T $(LDSCRIPT) -T $(BUILD_DIR)/undefined_syms.txt --no-check-sections --accept-unknown-input-arch --emit-relocs -Map $(MAP) -o $@
 
 ## Order-only prerequisites
@@ -430,39 +522,53 @@ $(O_FILES): | asset_files
 .PHONY: o_files asset_files
 
 $(BUILD_DIR)/$(SPEC): $(SPEC)
-	$(call print,Compiling:,$<,$@)
+	$(call print,Preprocessing:,$<,$@)
 	$(V)$(CPP) $(CPPFLAGS) $< | $(SPEC_REPLACE_VARS) > $@
 
 $(LDSCRIPT): $(BUILD_DIR)/$(SPEC)
-	$(call print,Linking:,$<,$@)
+	$(call print,Creating linker script:,$<,$@)
 	$(V)$(MKLDSCRIPT) $< $@
 
 $(BUILD_DIR)/undefined_syms.txt: undefined_syms.txt
-	$(call print,Compiling:,$<,$@)
+	$(call print,Preprocessing:,$<,$@)
 	$(V)$(CPP) $(CPPFLAGS) $< > $@
 
 $(BUILD_DIR)/baserom/%.o: $(EXTRACTED_DIR)/baserom/%
+	$(call print,Wrapping binary to ELF:,$<,$@)
+	$(V)$(OBJCOPY) -I binary -O elf32-big $< $@
+	
+$(BUILD_DIR)/F3DEX3/%.o: F3DEX3/%
+	$(call print,Wrapping binary to ELF:,$<,$@)
+	$(V)mkdir -p $(BUILD_DIR)/F3DEX3
 	$(V)$(OBJCOPY) -I binary -O elf32-big $< $@
 
 $(BUILD_DIR)/data/%.o: data/%.s
-	$(call print,Relocating:,$<,$@)
+	$(call print,Assembling:,$<,$@)
 	$(V)$(AS) $(ASFLAGS) $< -o $@
 
-$(BUILD_DIR)/data/rsp.rodata.f3dex3.o: F3DEX3/F3DEX3.code F3DEX3/F3DEX3.data
+$(BUILD_DIR)/assets/text/%.enc.jpn.h: assets/text/%.h $(EXTRACTED_DIR)/text/%.h assets/text/charmap.txt
+	$(call print,Encoding:,$<,$@)
+	$(V)$(CPP) $(CPPFLAGS) -I$(EXTRACTED_DIR) $< | $(PYTHON) tools/msgenc.py --encoding jpn --charmap assets/text/charmap.txt - $@
 
-$(BUILD_DIR)/assets/text/%.enc.h: assets/text/%.h $(EXTRACTED_DIR)/text/%.h assets/text/charmap.txt
-	$(call print,Compiling:,$<,$@)
-	$(V)$(CPP) $(CPPFLAGS) -I$(EXTRACTED_DIR) $< | $(PYTHON) tools/msgenc.py - --output $@ --charmap assets/text/charmap.txt
+$(BUILD_DIR)/assets/text/%.enc.nes.h: assets/text/%.h $(EXTRACTED_DIR)/text/%.h assets/text/charmap.txt
+	$(call print,Encoding:,$<,$@)
+	$(V)$(CPP) $(CPPFLAGS) -I$(EXTRACTED_DIR) $< | $(PYTHON) tools/msgenc.py --encoding nes --charmap assets/text/charmap.txt - $@
 
 # Dependencies for files including message data headers
 # TODO remove when full header dependencies are used.
-$(BUILD_DIR)/assets/text/fra_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.h
-$(BUILD_DIR)/assets/text/ger_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.h
-$(BUILD_DIR)/assets/text/nes_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.h
-$(BUILD_DIR)/assets/text/staff_message_data_static.o: $(BUILD_DIR)/assets/text/message_data_staff.enc.h
-$(BUILD_DIR)/src/code/z_message_PAL.o: $(BUILD_DIR)/assets/text/message_data.enc.h $(BUILD_DIR)/assets/text/message_data_staff.enc.h
+$(BUILD_DIR)/assets/text/jpn_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.jpn.h
+$(BUILD_DIR)/assets/text/nes_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.nes.h
+$(BUILD_DIR)/assets/text/ger_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.nes.h
+$(BUILD_DIR)/assets/text/fra_message_data_static.o: $(BUILD_DIR)/assets/text/message_data.enc.nes.h
+$(BUILD_DIR)/assets/text/staff_message_data_static.o: $(BUILD_DIR)/assets/text/message_data_staff.enc.nes.h
+$(BUILD_DIR)/src/code/z_message.o: assets/text/message_data.h assets/text/message_data_staff.h
 
-$(BUILD_DIR)/assets/%.o: assets/%.c
+$(BUILD_DIR)/assets/text/%.o: assets/text/%.c
+	$(call print,Compiling:,$<,$@)
+	$(V)$(CC) -c $(CFLAGS) $(MIPS_VERSION) $(OPTFLAGS) -o $@ $<
+	$(V)$(OBJCOPY) -O binary -j.rodata $@ $@.bin
+
+$(BUILD_DIR)/assets/%.o: $(EXTRACTED_DIR)/assets/%.c
 	$(call print,Compiling:,$<,$@)
 	$(V)$(CC) -c $(CFLAGS) $(MIPS_VERSION) $(OPTFLAGS) -o $@ $<
 	$(V)$(OBJCOPY) -O binary $@ $@.bin
@@ -519,14 +625,28 @@ $(BUILD_DIR)/src/overlays/%_reloc.o: $(BUILD_DIR)/$(SPEC)
 	$(V)$(FADO) $$(tools/reloc_prereq $< $(notdir $*)) -n $(notdir $*) -o $(@:.o=.s) -M $(@:.o=.d)
 	$(V)$(AS) $(ASFLAGS) $(@:.o=.s) -o $@
 
-$(BUILD_DIR)/%.inc.c: %.png
+$(BUILD_DIR)/assets/%.inc.c: $(EXTRACTED_DIR)/assets/%.png
 	$(V)$(ZAPD) btex -eh -tt $(subst .,,$(suffix $*)) -i $< -o $@
 
-$(BUILD_DIR)/assets/%.bin.inc.c: assets/%.bin
+$(BUILD_DIR)/assets/%.bin.inc.c: $(EXTRACTED_DIR)/assets/%.bin
 	$(V)$(ZAPD) bblb -eh -i $< -o $@
 
-$(BUILD_DIR)/assets/%.jpg.inc.c: assets/%.jpg
+$(BUILD_DIR)/assets/%.jpg.inc.c: $(EXTRACTED_DIR)/assets/%.jpg
 	$(V)$(ZAPD) bren -eh -i $< -o $@
+
+F3DEX3/f3dzex2.code:
+	$(V)$(PYTHON) tools/data_extractor.py --start 0xBCD0F0 --size 0x1630 --input $(BASEROM_DIR)/baserom-decompressed.z64 --output $@
+
+F3DEX3/f3dzex2.data:
+	$(V)$(PYTHON) tools/data_extractor.py --start 0xBCE720 --size 0x420 --input $(BASEROM_DIR)/baserom-decompressed.z64 --output $@
+
+F3DEX3/F3DEX3%.code: F3DEX3/F3DEX3%.code.bps F3DEX3/f3dzex2.code
+	$(V)$(FLIPS) --apply F3DEX3/F3DEX3$*.code.bps F3DEX3/f3dzex2.code $@
+	
+F3DEX3/F3DEX3%.data: F3DEX3/F3DEX3%.data.bps F3DEX3/f3dzex2.data
+	$(V)$(FLIPS) --apply F3DEX3/F3DEX3$*.data.bps F3DEX3/f3dzex2.data $@
+
+.PRECIOUS: $(UCODE_FILES)
 
 -include $(DEP_FILES)
 

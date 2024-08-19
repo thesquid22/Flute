@@ -4,16 +4,6 @@
 #define GFXPOOL_HEAD_MAGIC 0x1234
 #define GFXPOOL_TAIL_MAGIC 0x5678
 
-/**
- * The time at which the previous `Graph_Update` ended.
- */
-OSTime sGraphPrevUpdateEndTime;
-
-/**
- * The time at which the previous graphics task was scheduled to run.
- */
-OSTime sGraphPrevTaskTimeStart;
-
 #if IS_DEBUG
 FaultClient sGraphFaultClient;
 #endif
@@ -23,14 +13,20 @@ CfbInfo sGraphCfbInfos[3];
 #if IS_DEBUG
 FaultClient sGraphUcodeFaultClient;
 
+#if ENABLE_F3DEX3
+#define GRAPH_UCODE_GLOBAL_SYMBOL gF3DEX3TextBuffer
+#else
+#define GRAPH_UCODE_GLOBAL_SYMBOL gspF3DZEX2_NoN_PosLight_fifoTextStart
+#endif
+
 UCodeInfo D_8012D230[3] = {
-    { UCODE_F3DZEX, gspF3DZEX2_NoN_PosLight_fifoTextStart },
+    { UCODE_F3DZEX, GRAPH_UCODE_GLOBAL_SYMBOL },
     { UCODE_UNK, NULL },
     { UCODE_S2DEX, gspS2DEX2d_fifoTextStart },
 };
 
 UCodeInfo D_8012D248[3] = {
-    { UCODE_F3DZEX, gspF3DZEX2_NoN_PosLight_fifoTextStart },
+    { UCODE_F3DZEX, GRAPH_UCODE_GLOBAL_SYMBOL },
     { UCODE_UNK, NULL },
     { UCODE_S2DEX, gspS2DEX2d_fifoTextStart },
 };
@@ -59,7 +55,7 @@ void Graph_DisassembleUCode(Gfx* workBuf) {
         disassembler.enableLog = R_UCODE_DISAS_LOG_LEVEL;
 
         UCodeDisas_RegisterUCode(&disassembler, ARRAY_COUNT(D_8012D230), D_8012D230);
-        UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_PosLight_fifoTextStart);
+        UCodeDisas_SetCurUCode(&disassembler, GRAPH_UCODE_GLOBAL_SYMBOL);
 
         UCodeDisas_Disassemble(&disassembler, workBuf);
 
@@ -98,7 +94,7 @@ void Graph_UCodeFaultClient(Gfx* workBuf) {
     UCodeDisas_Init(&disassembler);
     disassembler.enableLog = true;
     UCodeDisas_RegisterUCode(&disassembler, ARRAY_COUNT(D_8012D248), D_8012D248);
-    UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_PosLight_fifoTextStart);
+    UCodeDisas_SetCurUCode(&disassembler, GRAPH_UCODE_GLOBAL_SYMBOL);
     UCodeDisas_Disassemble(&disassembler, workBuf);
     UCodeDisas_Destroy(&disassembler);
 }
@@ -113,11 +109,13 @@ void Graph_InitTHGA(GraphicsContext* gfxCtx) {
     THGA_Init(&gfxCtx->polyXlu, pool->polyXluBuffer, sizeof(pool->polyXluBuffer));
     THGA_Init(&gfxCtx->overlay, pool->overlayBuffer, sizeof(pool->overlayBuffer));
     THGA_Init(&gfxCtx->work, pool->workBuffer, sizeof(pool->workBuffer));
+    THGA_Init(&gfxCtx->debug, pool->debugBuffer, sizeof(pool->debugBuffer));
 
     gfxCtx->polyOpaBuffer = pool->polyOpaBuffer;
     gfxCtx->polyXluBuffer = pool->polyXluBuffer;
     gfxCtx->overlayBuffer = pool->overlayBuffer;
     gfxCtx->workBuffer = pool->workBuffer;
+    gfxCtx->debugBuffer = pool->debugBuffer;
 
     gfxCtx->curFrameBuffer = SysCfb_GetFbPtr(gfxCtx->fbIdx % 2);
     gfxCtx->unk_014 = 0;
@@ -162,10 +160,11 @@ void Graph_Destroy(GraphicsContext* gfxCtx) {
 #endif
 }
 
-void Graph_TaskSet00(GraphicsContext* gfxCtx) {
 #if IS_DEBUG
-    static Gfx* sPrevTaskWorkBuffer = NULL;
+Gfx* gPrevTaskWorkBuffer = NULL;
 #endif
+
+void Graph_TaskSet00(GraphicsContext* gfxCtx) {
     static s32 sGraphCfbInfoIdx = 0;
 
     OSTime timeNow;
@@ -173,11 +172,6 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
     OSMesg msg;
     OSTask_t* task = &gfxCtx->task.list.t;
     OSScTask* scTask = &gfxCtx->task;
-
-    if (IS_SPEEDMETER_ENABLED) {
-        gGfxTaskSentToNextReadyMinusAudioThreadUpdateTime =
-            osGetTime() - sGraphPrevTaskTimeStart - gAudioThreadUpdateTimeAcc;
-    }
 
     {
         CfbInfo* cfb;
@@ -198,11 +192,11 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
             LogUtils_LogHexDump(gGfxSPTaskYieldBuffer, sizeof(gGfxSPTaskYieldBuffer));
 
             SREG(6) = -1;
-            if (sPrevTaskWorkBuffer != NULL) {
+            if (gPrevTaskWorkBuffer != NULL) {
                 R_HREG_MODE = HREG_MODE_UCODE_DISAS;
                 R_UCODE_DISAS_TOGGLE = 1;
                 R_UCODE_DISAS_LOG_LEVEL = 2;
-                Graph_DisassembleUCode(sPrevTaskWorkBuffer);
+                Graph_DisassembleUCode(gPrevTaskWorkBuffer);
             }
 #endif
 
@@ -212,27 +206,12 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
         osRecvMesg(&gfxCtx->queue, &msg, OS_MESG_NOBLOCK);
 
 #if IS_DEBUG
-        sPrevTaskWorkBuffer = gfxCtx->workBuffer;
+        gPrevTaskWorkBuffer = gfxCtx->workBuffer;
 #endif
 
         if (gfxCtx->callback != NULL) {
             gfxCtx->callback(gfxCtx, gfxCtx->callbackParam);
         }
-
-        if (IS_SPEEDMETER_ENABLED) {
-            timeNow = osGetTime();
-            if (gAudioThreadUpdateTimeStart != 0) {
-                // The audio thread update is running
-                // Add the time already spent to the accumulator and leave the rest for the next cycle
-
-                gAudioThreadUpdateTimeAcc += timeNow - gAudioThreadUpdateTimeStart;
-                gAudioThreadUpdateTimeStart = timeNow;
-            }
-            gAudioThreadUpdateTimeTotalPerGfxTask = gAudioThreadUpdateTimeAcc;
-            gAudioThreadUpdateTimeAcc = 0;
-        }
-
-        sGraphPrevTaskTimeStart = osGetTime();
 
         task->type = M_GFXTASK;
         task->flags = OS_SC_DRAM_DLIST;
@@ -308,6 +287,7 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     gDPNoOpString(POLY_OPA_DISP++, "POLY_OPA_DISP 開始", 0);
     gDPNoOpString(POLY_XLU_DISP++, "POLY_XLU_DISP 開始", 0);
     gDPNoOpString(OVERLAY_DISP++, "OVERLAY_DISP 開始", 0);
+    gDPNoOpString(DEBUG_DISP++, "DEBUG_DISP 開始", 0);
 
     CLOSE_DISPS(gfxCtx, "../graph.c", 975);
 #endif
@@ -322,6 +302,7 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     gDPNoOpString(POLY_OPA_DISP++, "POLY_OPA_DISP 終了", 0);
     gDPNoOpString(POLY_XLU_DISP++, "POLY_XLU_DISP 終了", 0);
     gDPNoOpString(OVERLAY_DISP++, "OVERLAY_DISP 終了", 0);
+    gDPNoOpString(DEBUG_DISP++, "DEBUG_DISP 終了", 0);
 
     CLOSE_DISPS(gfxCtx, "../graph.c", 996);
 #endif
@@ -331,9 +312,17 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     gSPBranchList(WORK_DISP++, gfxCtx->polyOpaBuffer);
     gSPBranchList(POLY_OPA_DISP++, gfxCtx->polyXluBuffer);
     gSPBranchList(POLY_XLU_DISP++, gfxCtx->overlayBuffer);
+#if IS_DEBUG
+    gSPBranchList(OVERLAY_DISP++, gfxCtx->debugBuffer);
+    gSPBranchList(DEBUG_DISP++, WORK_DISP);
+    gDPPipeSync(WORK_DISP++);
+    gDPFullSync(WORK_DISP++);
+    gSPEndDisplayList(WORK_DISP++);
+#else
     gDPPipeSync(OVERLAY_DISP++);
     gDPFullSync(OVERLAY_DISP++);
     gSPEndDisplayList(OVERLAY_DISP++);
+#endif
 
     CLOSE_DISPS(gfxCtx, "../graph.c", 1028);
 
@@ -414,26 +403,6 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     Audio_Update();
 
-    {
-        OSTime timeNow = osGetTime();
-        s32 pad;
-
-        if (IS_SPEEDMETER_ENABLED) {
-            gRSPGfxTimeTotal = gRSPGfxTimeAcc;
-            gRSPAudioTimeTotal = gRSPAudioTimeAcc;
-            gRDPTimeTotal = gRDPTimeAcc;
-            gRSPGfxTimeAcc = 0;
-            gRSPAudioTimeAcc = 0;
-            gRDPTimeAcc = 0;
-
-            if (sGraphPrevUpdateEndTime != 0) {
-                gGraphUpdatePeriod = timeNow - sGraphPrevUpdateEndTime;
-            }
-        }
-
-        sGraphPrevUpdateEndTime = timeNow;
-    }
-
 #if IS_DEBUG
     if (IS_MAP_SELECT_ENABLED && CHECK_BTN_ALL(gameState->input[0].press.button, BTN_Z) &&
         CHECK_BTN_ALL(gameState->input[0].cur.button, BTN_L | BTN_R)) {
@@ -483,6 +452,7 @@ void Graph_ThreadEntry(void* arg0) {
         if (gameState == NULL) {
 #if IS_DEBUG
             char faultMsg[0x50];
+
             PRINTF("確保失敗\n"); // "Failure to secure"
 
             sprintf(faultMsg, "CLASS SIZE= %d bytes", size);
@@ -529,36 +499,36 @@ void* Graph_Alloc2(GraphicsContext* gfxCtx, size_t size) {
 
 #if IS_DEBUG
 void Graph_OpenDisps(Gfx** dispRefs, GraphicsContext* gfxCtx, const char* file, int line) {
-    if (R_HREG_MODE == HREG_MODE_UCODE_DISAS && R_UCODE_DISAS_LOG_MODE != 4) {
-        dispRefs[0] = gfxCtx->polyOpa.p;
-        dispRefs[1] = gfxCtx->polyXlu.p;
-        dispRefs[2] = gfxCtx->overlay.p;
+#if GBI_DEBUG
+    dispRefs[0] = gfxCtx->polyOpa.p;
+    dispRefs[1] = gfxCtx->polyXlu.p;
+    dispRefs[2] = gfxCtx->overlay.p;
 
-        gDPNoOpOpenDisp(gfxCtx->polyOpa.p++, file, line);
-        gDPNoOpOpenDisp(gfxCtx->polyXlu.p++, file, line);
-        gDPNoOpOpenDisp(gfxCtx->overlay.p++, file, line);
-    }
+    gDPNoOpOpenDisp(gfxCtx->polyOpa.p++, file, line);
+    gDPNoOpOpenDisp(gfxCtx->polyXlu.p++, file, line);
+    gDPNoOpOpenDisp(gfxCtx->overlay.p++, file, line);
+#endif
 }
 
 void Graph_CloseDisps(Gfx** dispRefs, GraphicsContext* gfxCtx, const char* file, int line) {
-    if (R_HREG_MODE == HREG_MODE_UCODE_DISAS && R_UCODE_DISAS_LOG_MODE != 4) {
-        if (dispRefs[0] + 1 == gfxCtx->polyOpa.p) {
-            gfxCtx->polyOpa.p = dispRefs[0];
-        } else {
-            gDPNoOpCloseDisp(gfxCtx->polyOpa.p++, file, line);
-        }
-
-        if (dispRefs[1] + 1 == gfxCtx->polyXlu.p) {
-            gfxCtx->polyXlu.p = dispRefs[1];
-        } else {
-            gDPNoOpCloseDisp(gfxCtx->polyXlu.p++, file, line);
-        }
-
-        if (dispRefs[2] + 1 == gfxCtx->overlay.p) {
-            gfxCtx->overlay.p = dispRefs[2];
-        } else {
-            gDPNoOpCloseDisp(gfxCtx->overlay.p++, file, line);
-        }
+#if GBI_DEBUG
+    if (dispRefs[0] + 1 == gfxCtx->polyOpa.p) {
+        gfxCtx->polyOpa.p = dispRefs[0];
+    } else {
+        gDPNoOpCloseDisp(gfxCtx->polyOpa.p++, file, line);
     }
+
+    if (dispRefs[1] + 1 == gfxCtx->polyXlu.p) {
+        gfxCtx->polyXlu.p = dispRefs[1];
+    } else {
+        gDPNoOpCloseDisp(gfxCtx->polyXlu.p++, file, line);
+    }
+
+    if (dispRefs[2] + 1 == gfxCtx->overlay.p) {
+        gfxCtx->overlay.p = dispRefs[2];
+    } else {
+        gDPNoOpCloseDisp(gfxCtx->overlay.p++, file, line);
+    }
+#endif
 }
 #endif

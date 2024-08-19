@@ -14,14 +14,12 @@
  * config_debug.h
  */
 #if RELEASE_ROM
-    #undef DETERMINISTIC_BUILD
     #undef SKIP_N64_BOOT_LOGO
     #undef BOOT_TO_SCENE
     #undef BOOT_TO_SCENE_NEW_GAME_ONLY
     #undef BOOT_TO_FILE_SELECT
     #undef DISABLE_DEBUG_FEATURES
 
-    #define DETERMINISTIC_BUILD false
     #define SKIP_N64_BOOT_LOGO false
     #define BOOT_TO_SCENE false
     #define BOOT_TO_SCENE_NEW_GAME_ONLY false
@@ -48,6 +46,7 @@
     #undef ENABLE_DEBUG_SAVE
     #undef MAP_SELECT_ON_FILE_1
     #undef ENABLE_DEBUG_HEAP
+    #undef INCLUDE_EXAMPLE_SCENE
     #undef ENABLE_MOTION_BLUR_DEBUG
 
     #define SHOW_CS_INFOS false
@@ -68,6 +67,7 @@
     #define ENABLE_DEBUG_SAVE false
     #define MAP_SELECT_ON_FILE_1 false
     #define ENABLE_DEBUG_HEAP false
+    #define INCLUDE_EXAMPLE_SCENE false
     #define ENABLE_MOTION_BLUR_DEBUG false
 #endif
 
@@ -110,20 +110,8 @@
  * config_game.h
  */
 #if !ENABLE_F3DEX3
-    #if ENABLE_F3DEX3_RECOMMENDATIONS
-        #undef ENABLE_F3DEX3_RECOMMENDATIONS
-        #define ENABLE_F3DEX3_RECOMMENDATIONS false
-    #endif
-
-    #if ENABLE_F3DEX3_NEW_FEATURES
-        #undef ENABLE_F3DEX3_NEW_FEATURES
-        #define ENABLE_F3DEX3_NEW_FEATURES false
-    #endif
-
-    #if ENABLE_F3DEX3_NOSYNCS
-        #undef ENABLE_F3DEX3_NOSYNCS
-        #define ENABLE_F3DEX3_NOSYNCS false
-    #endif
+    #undef ENABLE_F3DEX3_NOSYNCS
+    #define ENABLE_F3DEX3_NOSYNCS false
 #endif
 
 #if FORCE_WIDESCREEN
@@ -141,12 +129,16 @@
     #define ENABLE_MOTION_BLUR false
 #endif
 
+#ifdef CONSOLE_GC
+    #undef ENABLE_F3DEX3
+    #define ENABLE_F3DEX3 false
+#endif
+
 
 /**
  * Default settings if not using HackerOoT mode
 */
 #if !ENABLE_HACKEROOT
-    #undef DETERMINISTIC_BUILD
     #undef SKIP_N64_BOOT_LOGO
     #undef BOOT_TO_SCENE
     #undef BOOT_TO_SCENE_NEW_GAME_ONLY
@@ -171,7 +163,6 @@
     #undef MAP_SELECT_ON_FILE_1
     #undef ENABLE_MOTION_BLUR_DEBUG
 
-    #define DETERMINISTIC_BUILD false
     #define SKIP_N64_BOOT_LOGO true
     #define BOOT_TO_SCENE false
     #define BOOT_TO_SCENE_NEW_GAME_ONLY false
@@ -206,6 +197,10 @@
 #define IS_DEBUG OOT_DEBUG
 #endif
 
+#if ENABLE_PROFILER && !ENABLE_HACKER_DEBUG
+#error "ENABLE_PROFILER requires ENABLE_HACKER_DEBUG"
+#endif
+
 /**
  * Game
 */
@@ -238,7 +233,6 @@
 #define IS_AUDIO_DEBUG_ENABLED (IS_DEBUG && ENABLE_AUDIO_DEBUGGER)
 #define IS_ACTOR_DEBUG_ENABLED (IS_DEBUG && ENABLE_ACTOR_DEBUGGER)
 #define IS_MSG_DEBUG_ENABLED (IS_DEBUG && ENABLE_MSG_DEBUGGER)
-#define IS_SPEEDMETER_ENABLED (IS_DEBUG && ENABLE_SPEEDMETER)
 
 /**
  * Compression

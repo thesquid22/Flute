@@ -1,11 +1,20 @@
 #include "global.h"
 #include "terminal.h"
+
+#include "z64frame_advance.h"
+
 #include "overlays/effects/ovl_Effect_Ss_HitMark/z_eff_ss_hitmark.h"
 
 typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
 typedef void (*ColChkApplyFunc)(PlayState*, CollisionCheckContext*, Collider*);
 typedef void (*ColChkVsFunc)(PlayState*, CollisionCheckContext*, Collider*, Collider*);
 typedef s32 (*ColChkLineFunc)(PlayState*, CollisionCheckContext*, Collider*, Vec3f*, Vec3f*);
+
+#define SAC_ENABLE (1 << 0)
+
+// For retail BSS ordering, the block number of sparkInit in CollisionCheck_BlueBlood
+// must be between 183 and 255 inclusive.
+#pragma increment_block_number 50
 
 #if IS_DEBUG
 /**
@@ -2246,8 +2255,10 @@ void CollisionCheck_ATCylVsACQuad(PlayState* play, CollisionCheckContext* colChk
     }
 }
 
+#if OOT_DEBUG
 static s8 sBssDummy0;
 static s8 sBssDummy1;
+#endif
 
 void CollisionCheck_ATQuadVsACCyl(PlayState* play, CollisionCheckContext* colChkCtx, Collider* atCol, Collider* acCol) {
     static TriNorm tri1;
@@ -2308,10 +2319,12 @@ void CollisionCheck_ATQuadVsACCyl(PlayState* play, CollisionCheckContext* colChk
     }
 }
 
+#if OOT_DEBUG
 static s8 sBssDummy3;
 static s8 sBssDummy4;
 static s8 sBssDummy5;
 static s8 sBssDummy6;
+#endif
 
 void CollisionCheck_ATTrisVsACTris(PlayState* play, CollisionCheckContext* colChkCtx, Collider* atCol,
                                    Collider* acCol) {
@@ -2357,11 +2370,6 @@ void CollisionCheck_ATTrisVsACTris(PlayState* play, CollisionCheckContext* colCh
         }
     }
 }
-
-static s8 sBssDummy7;
-static s8 sBssDummy8;
-static s8 sBssDummy9;
-static s8 sBssDummy10;
 
 void CollisionCheck_ATTrisVsACQuad(PlayState* play, CollisionCheckContext* colChkCtx, Collider* atCol,
                                    Collider* acCol) {
@@ -2594,9 +2602,10 @@ static ColChkApplyFunc sColChkApplyFuncs[] = {
  */
 void CollisionCheck_SetHitEffects(PlayState* play, CollisionCheckContext* colChkCtx) {
     Collider** acColP;
+    Collider* acCol;
 
     for (acColP = colChkCtx->colAC; acColP < colChkCtx->colAC + colChkCtx->colACCount; acColP++) {
-        Collider* acCol = *acColP;
+        acCol = *acColP;
 
         if (acCol != NULL && acCol->acFlags & AC_ON) {
             if (acCol->actor != NULL && acCol->actor->update == NULL) {
@@ -2643,9 +2652,10 @@ static ColChkVsFunc sACVsFuncs[COLSHAPE_MAX][COLSHAPE_MAX] = {
  */
 void CollisionCheck_AC(PlayState* play, CollisionCheckContext* colChkCtx, Collider* atCol) {
     Collider** acColP;
+    Collider* acCol;
 
     for (acColP = colChkCtx->colAC; acColP < colChkCtx->colAC + colChkCtx->colACCount; acColP++) {
-        Collider* acCol = *acColP;
+        acCol = *acColP;
 
         if (acCol != NULL && acCol->acFlags & AC_ON) {
             if (acCol->actor != NULL && acCol->actor->update == NULL) {
@@ -2669,12 +2679,13 @@ void CollisionCheck_AC(PlayState* play, CollisionCheckContext* colChkCtx, Collid
  */
 void CollisionCheck_AT(PlayState* play, CollisionCheckContext* colChkCtx) {
     Collider** atColP;
+    Collider* atCol;
 
     if (colChkCtx->colATCount == 0 || colChkCtx->colACCount == 0) {
         return;
     }
     for (atColP = colChkCtx->colAT; atColP < colChkCtx->colAT + colChkCtx->colATCount; atColP++) {
-        Collider* atCol = *atColP;
+        atCol = *atColP;
 
         if (atCol != NULL && atCol->atFlags & AT_ON) {
             if (atCol->actor != NULL && atCol->actor->update == NULL) {
@@ -2691,6 +2702,8 @@ typedef enum {
     /* 1 */ MASSTYPE_HEAVY,
     /* 2 */ MASSTYPE_NORMAL
 } ColChkMassType;
+
+#pragma increment_block_number 253
 
 /**
  * Get mass type. Immovable colliders cannot be pushed, while heavy colliders can only be pushed by heavy and immovable
@@ -3142,9 +3155,10 @@ static ColChkApplyFunc sApplyDamageFuncs[COLSHAPE_MAX] = {
  */
 void CollisionCheck_Damage(PlayState* play, CollisionCheckContext* colChkCtx) {
     s32 i;
+    Collider* col;
 
     for (i = 0; i < colChkCtx->colACCount; i++) {
-        Collider* col = colChkCtx->colAC[i];
+        col = colChkCtx->colAC[i];
 
         if (col == NULL) {
             continue;
@@ -3320,12 +3334,12 @@ void Collider_SetTrisDim(PlayState* play, ColliderTris* tris, s32 elemIndex, Col
     Collider_SetTrisElementDim(play, &trisElem->dim, src);
 }
 
-// Due to an unknown reason, bss ordering changed between the 2 static Vec3f variables in the function below.
-// In order to reproduce this behavior, we need a specific number of bss variables in the file before that point.
-// For this, we introduce a certain amount of dummy variables throughout the file, which we fit inside padding added
-// by the compiler between structs like TriNorm and/or Vec3f, so they don't take space in bss.
-static s8 sBssDummy11;
-static s8 sBssDummy12;
+#if OOT_DEBUG
+// The two static Vec3f variables in the function below cross a block index rollover, causing a bss order swap.
+//! In order to replicate this behavior, we declare a certain amount of sBssDummy variables throughout the file, which
+//! we fit inside padding added by the compiler between structs like TriNorm and/or Vec3f, so they don't take space in
+//! bss.
+#endif
 
 /**
  * Updates the world spheres for all of the collider's JntSph elements attached to the specified limb

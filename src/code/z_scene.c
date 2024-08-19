@@ -51,6 +51,9 @@ void Object_InitContext(PlayState* play, ObjectContext* objectCtx) {
     u32 spaceSize;
     s32 i;
 
+#if ENABLE_HACKEROOT
+    spaceSize = OBJECT_BANK_SIZE;
+#else
     if (play2->sceneId == SCENE_HYRULE_FIELD) {
         spaceSize = 1000 * 1024;
     } else if (play2->sceneId == SCENE_GANON_BOSS) {
@@ -68,6 +71,7 @@ void Object_InitContext(PlayState* play, ObjectContext* objectCtx) {
     } else {
         spaceSize = 1000 * 1024;
     }
+#endif
 
     objectCtx->numEntries = objectCtx->numPersistentEntries = 0;
     objectCtx->mainKeepSlot = objectCtx->subKeepSlot = 0;
@@ -409,8 +413,8 @@ BAD_RETURN(s32) Scene_CommandUndefined9(PlayState* play, SceneCmd* cmd) {
 }
 
 BAD_RETURN(s32) Scene_CommandSoundSettings(PlayState* play, SceneCmd* cmd) {
-    play->sequenceCtx.seqId = cmd->soundSettings.seqId;
-    play->sequenceCtx.natureAmbienceId = cmd->soundSettings.natureAmbienceId;
+    play->sceneSequences.seqId = cmd->soundSettings.seqId;
+    play->sceneSequences.natureAmbienceId = cmd->soundSettings.natureAmbienceId;
 
     if (gSaveContext.seqId == (u8)NA_BGM_DISABLED) {
         SEQCMD_RESET_AUDIO_HEAP(0, cmd->soundSettings.specId);
@@ -479,6 +483,13 @@ BAD_RETURN(s32) Scene_CommandMiscSettings(PlayState* play, SceneCmd* cmd) {
     }
 }
 
+#if ENABLE_F3DEX3
+BAD_RETURN(s32) Scene_CommandOccPlaneCandList(PlayState* play, SceneCmd* cmd) {
+    play->roomCtx.curRoom.occPlaneCount = cmd->occPlaneCandList.count;
+    play->roomCtx.curRoom.occPlaneList = SEGMENTED_TO_VIRTUAL(cmd->occPlaneCandList.list);
+}
+#endif
+
 void Scene_SetTransitionForNextEntrance(PlayState* play) {
     s16 entranceIndex;
 
@@ -526,6 +537,9 @@ SceneCmdHandlerFunc gSceneCmdHandlers[SCENE_CMD_ID_MAX] = {
     Scene_CommandCutsceneData,             // SCENE_CMD_ID_CUTSCENE_DATA
     Scene_CommandAlternateHeaderList,      // SCENE_CMD_ID_ALTERNATE_HEADER_LIST
     Scene_CommandMiscSettings,             // SCENE_CMD_ID_MISC_SETTINGS
+#if ENABLE_F3DEX3
+    Scene_CommandOccPlaneCandList, // SCENE_CMD_ID_OCC_PLANE_CAND_LIST
+#endif
 };
 
 RomFile sNaviQuestHintFiles[] = {

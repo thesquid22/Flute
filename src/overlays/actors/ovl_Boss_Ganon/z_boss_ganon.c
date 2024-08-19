@@ -100,11 +100,21 @@ static ColliderCylinderInit sLightBallCylinderInit = {
 static u8 D_808E4C58[] = { 0, 12, 10, 12, 14, 16, 12, 14, 16, 12, 14, 16, 12, 14, 16, 10, 16, 14 };
 static Vec3f sZeroVec = { 0.0f, 0.0f, 0.0f };
 
+// For retail BSS ordering, the block number of sGanondorf must be 0 or just above.
+
+// TODO: There's probably a way to do this with less padding by spreading the variables out and moving
+// data around. It would be easier if we had more options for controlling BSS ordering in debug.
+#pragma increment_block_number 50
+
 static EnGanonMant* sCape;
+
+#pragma increment_block_number 200
 
 static s32 sSeed1;
 static s32 sSeed2;
 static s32 sSeed3;
+
+#pragma increment_block_number 200
 
 static BossGanon* sGanondorf;
 
@@ -4819,6 +4829,7 @@ void BossGanon_DrawEffects(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     GanondorfEffect* eff = play->specialEffects;
     GanondorfEffect* effFirst = eff;
+    IF_F3DEX3_DONT_SKIP_TEX_INIT();
 
     OPEN_DISPS(gfxCtx, "../z_boss_ganon.c", 10865);
     Gfx_SetupDL_25Xlu(play->state.gfxCtx);
@@ -4935,6 +4946,7 @@ void BossGanon_DrawEffects(PlayState* play) {
             gSPMatrix(POLY_XLU_DISP++, MATRIX_NEW(gfxCtx, "../z_boss_ganon.c", 11074),
                       G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
             gSPSegment(POLY_XLU_DISP++, 0x08, SEGMENTED_TO_VIRTUAL(sLightningTextures[eff->timer]));
+            IF_F3DEX3_DONT_SKIP_TEX_HERE(POLY_XLU_DISP++, eff->timer);
             gSPDisplayList(POLY_XLU_DISP++, gGanondorfLightningDL);
         }
     }

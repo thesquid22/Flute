@@ -1,17 +1,17 @@
 #include "global.h"
 #include "quake.h"
 #include "terminal.h"
+#include "config.h"
 
-#if IS_DEBUG
-void* gDebugCutsceneScript = NULL;
-UNK_TYPE D_8012D1F4 = 0; // unused
+#if INCLUDE_EXAMPLE_SCENE
+#include "assets/scenes/example/example_scene.h"
 #endif
 
-Input* D_8012D1F8 = NULL;
+#include "z64frame_advance.h"
 
-TransitionTile sTransitionTile;
+TransitionTile gTransitionTile;
 s32 gTransitionTileState;
-VisMono sPlayVisMono;
+VisMono gPlayVisMono;
 Color_RGBA8_u32 gVisMonoColor;
 
 #if IS_DEBUG
@@ -19,6 +19,13 @@ FaultClient D_801614B8;
 #endif
 
 s16 sTransitionFillTimer;
+
+#if IS_DEBUG
+void* gDebugCutsceneScript = NULL;
+UNK_TYPE D_8012D1F4 = 0; // unused
+#endif
+
+Input* D_8012D1F8 = NULL;
 
 void Play_SpawnScene(PlayState* this, s32 sceneId, s32 spawn);
 
@@ -177,7 +184,12 @@ void func_800BC88C(PlayState* this) {
 }
 
 Gfx* Play_SetFog(PlayState* this, Gfx* gfx) {
-    return Gfx_SetFog2(gfx, this->lightCtx.fogColor[0], this->lightCtx.fogColor[1], this->lightCtx.fogColor[2], 0,
+    s32 fogA = 0;
+    if (this->skyboxId != SKYBOX_NONE && this->lightCtx.fogNear < 980) {
+        fogA = (255 * (1000 - this->lightCtx.fogNear) + 25) / 50;
+        fogA = CLAMP(fogA, 0, 255);
+    }
+    return Gfx_SetFog2(gfx, this->lightCtx.fogColor[0], this->lightCtx.fogColor[1], this->lightCtx.fogColor[2], fogA,
                        this->lightCtx.fogNear, 1000);
 }
 
@@ -203,7 +215,7 @@ void Play_Destroy(GameState* thisx) {
     CollisionCheck_DestroyContext(this, &this->colChkCtx);
 
     if (gTransitionTileState == TRANS_TILE_READY) {
-        TransitionTile_Destroy(&sTransitionTile);
+        TransitionTile_Destroy(&gTransitionTile);
         gTransitionTileState = TRANS_TILE_OFF;
     }
 
@@ -215,7 +227,7 @@ void Play_Destroy(GameState* thisx) {
 
     Letterbox_Destroy();
     TransitionFade_Destroy(&this->transitionFadeFlash);
-    VisMono_Destroy(&sPlayVisMono);
+    VisMono_Destroy(&gPlayVisMono);
 
     if (gSaveContext.save.linkAge != this->linkAgeOnLoad) {
         Inventory_SwapAgeEquipment();
@@ -245,6 +257,10 @@ void Play_Init(GameState* thisx) {
     u8 baseSceneLayer;
     s32 pad[2];
 
+#if ENABLE_HACKER_DEBUG
+    gDebug.play = this;
+#endif
+
     if (gSaveContext.save.entranceIndex == ENTR_LOAD_OPENING) {
         gSaveContext.save.entranceIndex = 0;
         this->state.running = false;
@@ -252,11 +268,7 @@ void Play_Init(GameState* thisx) {
         return;
     }
 
-    if (IS_SPEEDMETER_ENABLED) {
-        SystemArena_Display();
-    }
-
-    GameState_Realloc(&this->state, 0x1D4790);
+    GameState_Realloc(&this->state, IS_DEBUG_HEAP_ENABLED ? 0x1D4790 : PLAY_ALLOC_SIZE);
     KaleidoManager_Init(this);
     View_Init(&this->view, gfxCtx);
     Audio_SetExtraFilter(0);
@@ -288,7 +300,7 @@ void Play_Init(GameState* thisx) {
     Effect_InitContext(this);
     EffectSs_InitInfo(this, 0x55);
     CollisionCheck_InitContext(this, &this->colChkCtx);
-    AnimationContext_Reset(&this->animationCtx);
+    AnimTaskQueue_Reset(&this->animTaskQueue);
     Cutscene_InitContext(this, &this->csCtx);
 
     if (gSaveContext.nextCutsceneIndex != 0xFFEF) {
@@ -348,15 +360,6 @@ void Play_Init(GameState* thisx) {
         gEntranceTable[((void)0, gSaveContext.save.entranceIndex) + ((void)0, gSaveContext.sceneLayer)].spawn);
 
     PRINTF("\nSCENE_NO=%d COUNTER=%d\n", ((void)0, gSaveContext.save.entranceIndex), gSaveContext.sceneLayer);
-
-    // When entering Gerudo Valley in the credits, trigger the GC emulator to play the ending movie.
-    // The emulator constantly checks whether PC is 0x81000000, so this works even though it's not a valid address.
-    if ((gEntranceTable[((void)0, gSaveContext.save.entranceIndex)].sceneId == SCENE_GERUDO_VALLEY) &&
-        gSaveContext.sceneLayer == 6) {
-        PRINTF("エンディングはじまるよー\n"); // "The ending starts"
-        ((void (*)(void))0x81000000)();
-        PRINTF("出戻り？\n"); // "Return?"
-    }
 
     Cutscene_HandleEntranceTriggers(this);
     KaleidoScopeCall_Init(this);
@@ -421,7 +424,7 @@ void Play_Init(GameState* thisx) {
     TransitionFade_SetType(&this->transitionFadeFlash, TRANS_INSTANCE_TYPE_FADE_FLASH);
     TransitionFade_SetColor(&this->transitionFadeFlash, RGBA8(160, 160, 160, 255));
     TransitionFade_Start(&this->transitionFadeFlash);
-    VisMono_Init(&sPlayVisMono);
+    VisMono_Init(&gPlayVisMono);
     gVisMonoColor.a = 0;
     CutsceneFlags_UnsetAll(this);
 
@@ -463,10 +466,10 @@ void Play_Init(GameState* thisx) {
 
     Interface_SetSceneRestrictions(this);
     Environment_PlaySceneSequence(this);
-    gSaveContext.seqId = this->sequenceCtx.seqId;
-    gSaveContext.natureAmbienceId = this->sequenceCtx.natureAmbienceId;
+    gSaveContext.seqId = this->sceneSequences.seqId;
+    gSaveContext.natureAmbienceId = this->sceneSequences.natureAmbienceId;
     func_8002DF18(this, GET_PLAYER(this));
-    AnimationContext_Update(this, &this->animationCtx);
+    AnimTaskQueue_Update(this, &this->animTaskQueue);
     gSaveContext.respawnFlag = 0;
 
     if (IS_DEBUG && R_USE_DEBUG_CUTSCENE) {
@@ -537,18 +540,18 @@ void Play_Update(PlayState* this) {
         if (gTransitionTileState != TRANS_TILE_OFF) {
             switch (gTransitionTileState) {
                 case TRANS_TILE_PROCESS:
-                    if (TransitionTile_Init(&sTransitionTile, 10, 7) == NULL) {
+                    if (TransitionTile_Init(&gTransitionTile, 10, 7) == NULL) {
                         PRINTF("fbdemo_init呼出し失敗！\n"); // "fbdemo_init call failed!"
                         gTransitionTileState = TRANS_TILE_OFF;
                     } else {
-                        sTransitionTile.zBuffer = (u16*)gZBuffer;
+                        gTransitionTile.zBuffer = (u16*)gZBuffer;
                         gTransitionTileState = TRANS_TILE_READY;
                         R_UPDATE_RATE = 1;
                     }
                     break;
 
                 case TRANS_TILE_READY:
-                    TransitionTile_Update(&sTransitionTile);
+                    TransitionTile_Update(&gTransitionTile);
                     break;
 
                 default:
@@ -703,7 +706,7 @@ void Play_Update(PlayState* this) {
                             this->transitionMode = TRANS_MODE_OFF;
 
                             if (gTransitionTileState == TRANS_TILE_READY) {
-                                TransitionTile_Destroy(&sTransitionTile);
+                                TransitionTile_Destroy(&gTransitionTile);
                                 gTransitionTileState = TRANS_TILE_OFF;
                                 R_UPDATE_RATE = 3;
                             }
@@ -899,7 +902,7 @@ void Play_Update(PlayState* this) {
             isPaused = IS_PAUSED(&this->pauseCtx);
 
             PLAY_LOG(3555);
-            AnimationContext_Reset(&this->animationCtx);
+            AnimTaskQueue_Reset(&this->animTaskQueue);
 
             if (!IS_DEBUG) {}
 
@@ -1016,7 +1019,7 @@ void Play_Update(PlayState* this) {
             Interface_Update(this);
 
             PLAY_LOG(3765);
-            AnimationContext_Update(this, &this->animationCtx);
+            AnimTaskQueue_Update(this, &this->animTaskQueue);
 
             PLAY_LOG(3771);
             SfxSource_UpdateAll(this);
@@ -1078,6 +1081,14 @@ skip:
             }
         }
     }
+
+#if INCLUDE_EXAMPLE_SCENE
+    if (this->sceneId == SCENE_EXAMPLE && CHECK_BTN_ALL(this->state.input[0].cur.button, BTN_L | BTN_R) &&
+        CHECK_BTN_ALL(this->state.input[0].press.button, BTN_A) && !Play_InCsMode(this)) {
+        Cutscene_SetScript(this, gExampleCS);
+        gSaveContext.cutsceneTrigger = 1;
+    }
+#endif
 }
 
 void Play_DrawOverlayElements(PlayState* this) {
@@ -1174,22 +1185,22 @@ void Play_DestroyMotionBlur(void) {
 #endif
 
 void Play_SetMotionBlurAlpha(u32 alpha) {
-    #if ENABLE_MOTION_BLUR
+#if ENABLE_MOTION_BLUR
     R_MOTION_BLUR_ALPHA = alpha;
-    #endif
+#endif
 }
 
 void Play_EnableMotionBlur(u32 alpha) {
-    #if ENABLE_MOTION_BLUR
+#if ENABLE_MOTION_BLUR
     R_MOTION_BLUR_ALPHA = alpha;
     R_MOTION_BLUR_ENABLED = true;
-    #endif
+#endif
 }
 
 void Play_DisableMotionBlur(void) {
-    #if ENABLE_MOTION_BLUR
+#if ENABLE_MOTION_BLUR
     R_MOTION_BLUR_ENABLED = false;
-    #endif
+#endif
 }
 
 #if ENABLE_MOTION_BLUR
@@ -1234,7 +1245,28 @@ void Play_Draw(PlayState* this) {
     gSPSegment(POLY_XLU_DISP++, 0x02, this->sceneSegment);
     gSPSegment(OVERLAY_DISP++, 0x02, this->sceneSegment);
 
-    Gfx_SetupFrame(gfxCtx, 0, 0, 0);
+    {
+        // Only clear the FB if there is no skybox or it is solid color
+        s32 clearFB = this->skyboxId == SKYBOX_NONE || this->skyboxId == SKYBOX_UNSET_1D || this->envCtx.skyboxDisabled;
+
+        // For no skybox, black background
+        u8 clearR = 0;
+        u8 clearG = 0;
+        u8 clearB = 0;
+
+        if (this->skyboxId == SKYBOX_UNSET_1D) {
+            // Solid-color "skybox" matching fog color
+            clearR = this->lightCtx.fogColor[0];
+            clearG = this->lightCtx.fogColor[1];
+            clearB = this->lightCtx.fogColor[2];
+        }
+        // Clear the fb only if we aren't drawing a skybox
+        Gfx_SetupFrame(gfxCtx, clearFB, clearR, clearG, clearB);
+    }
+
+#if ENABLE_F3DEX3
+    OcclusionPlane_Draw_Phase(this, OCCLUSION_PLANE_PHASE_START);
+#endif
 
     if (!IS_DEBUG || (R_HREG_MODE != HREG_MODE_PLAY) || R_PLAY_RUN_DRAW) {
         POLY_OPA_DISP = Play_SetFog(this, POLY_OPA_DISP);
@@ -1282,8 +1314,8 @@ void Play_Draw(PlayState* this) {
             TransitionFade_Draw(&this->transitionFadeFlash, &gfxP);
 
             if (gVisMonoColor.a > 0) {
-                sPlayVisMono.vis.primColor.rgba = gVisMonoColor.rgba;
-                VisMono_Draw(&sPlayVisMono, &gfxP);
+                gPlayVisMono.vis.primColor.rgba = gVisMonoColor.rgba;
+                VisMono_Draw(&gPlayVisMono, &gfxP);
             }
 
             gSPEndDisplayList(gfxP++);
@@ -1294,7 +1326,7 @@ void Play_Draw(PlayState* this) {
         if (gTransitionTileState == TRANS_TILE_READY) {
             Gfx* sp88 = POLY_OPA_DISP;
 
-            TransitionTile_Draw(&sTransitionTile, &sp88);
+            TransitionTile_Draw(&gTransitionTile, &sp88);
             POLY_OPA_DISP = sp88;
             goto Play_Draw_DrawOverlayElements;
         }
@@ -1330,14 +1362,14 @@ void Play_Draw(PlayState* this) {
         }
 
         if (!IS_DEBUG || (R_HREG_MODE != HREG_MODE_PLAY) || R_PLAY_DRAW_SKYBOX) {
-            if (this->skyboxId && (this->skyboxId != SKYBOX_UNSET_1D) && !this->envCtx.skyboxDisabled) {
+            if (this->skyboxId != SKYBOX_NONE && (this->skyboxId != SKYBOX_UNSET_1D) && !this->envCtx.skyboxDisabled) {
                 if ((this->skyboxId == SKYBOX_NORMAL_SKY) || (this->skyboxId == SKYBOX_CUTSCENE_MAP)) {
                     Environment_UpdateSkybox(this->skyboxId, &this->envCtx, &this->skyboxCtx);
-                    Skybox_Draw(&this->skyboxCtx, gfxCtx, this->skyboxId, this->envCtx.skyboxBlend, this->view.eye.x,
-                                this->view.eye.y, this->view.eye.z);
+                    Skybox_Draw(&this->skyboxCtx, gfxCtx, &this->lightCtx, this->skyboxId, this->envCtx.skyboxBlend,
+                                this->view.eye.x, this->view.eye.y, this->view.eye.z);
                 } else if (this->skyboxCtx.drawType == SKYBOX_DRAW_128) {
-                    Skybox_Draw(&this->skyboxCtx, gfxCtx, this->skyboxId, 0, this->view.eye.x, this->view.eye.y,
-                                this->view.eye.z);
+                    Skybox_Draw(&this->skyboxCtx, gfxCtx, &this->lightCtx, this->skyboxId, 0, this->view.eye.x,
+                                this->view.eye.y, this->view.eye.z);
                 }
             }
         }
@@ -1351,6 +1383,19 @@ void Play_Draw(PlayState* this) {
         if (!IS_DEBUG || (R_HREG_MODE != HREG_MODE_PLAY) || (R_PLAY_DRAW_ENV_FLAGS & PLAY_ENV_DRAW_SKYBOX_FILTERS)) {
             Environment_DrawSkyboxFilters(this);
         }
+
+        // The Z buffer has to be cleared at some point before anything using it
+        // is drawn (lighting strike is the first which does). But if we are
+        // using F3DEX3's SPMemset to clear it, it should be done as late as
+        // possible, after the RSP has already sent commands to the RDP for the
+        // skybox or framebuffer clear. This is so that the RSP can clear the Z
+        // buffer while the RDP is working on the framebuffer, without making
+        // the RDP wait for new work to be available.
+        Gfx_ClearZBuffer(gfxCtx);
+
+#if ENABLE_F3DEX3
+        OcclusionPlane_Draw_Phase(this, OCCLUSION_PLANE_PHASE_POST_SKY);
+#endif
 
         if (!IS_DEBUG || (R_HREG_MODE != HREG_MODE_PLAY) || (R_PLAY_DRAW_ENV_FLAGS & PLAY_ENV_DRAW_LIGHTNING)) {
             Environment_UpdateLightningStrike(this);
@@ -1384,7 +1429,9 @@ void Play_Draw(PlayState* this) {
                 Vec3f quakeOffset;
 
                 quakeOffset = Camera_GetQuakeOffset(GET_ACTIVE_CAM(this));
-                Skybox_Draw(&this->skyboxCtx, gfxCtx, this->skyboxId, 0, this->view.eye.x + quakeOffset.x,
+                // lightCtx arg is NULL here since this is responsible for prerendered backgrounds, in this case we
+                // don't want them to be affected by fog
+                Skybox_Draw(&this->skyboxCtx, gfxCtx, NULL, this->skyboxId, 0, this->view.eye.x + quakeOffset.x,
                             this->view.eye.y + quakeOffset.y, this->view.eye.z + quakeOffset.z);
             }
         }
@@ -1463,6 +1510,10 @@ void Play_Draw(PlayState* this) {
         }
 
     Play_Draw_DrawOverlayElements:
+#if ENABLE_F3DEX3
+        OcclusionPlane_Draw_Phase(this, OCCLUSION_PLANE_PHASE_POST_3D);
+#endif
+
         if (!IS_DEBUG || (R_HREG_MODE != HREG_MODE_PLAY) || R_PLAY_DRAW_OVERLAY_ELEMENTS) {
             Play_DrawOverlayElements(this);
         }
@@ -1505,6 +1556,9 @@ Play_Draw_skip:
             Skybox_UpdateMatrix(&this->skyboxCtx, this->view.eye.x, this->view.eye.y, this->view.eye.z);
         }
     }
+#if ENABLE_F3DEX3
+    OcclusionPlane_Draw_PostCamUpdate(this);
+#endif
 
     Camera_Finish(GET_ACTIVE_CAM(this));
 

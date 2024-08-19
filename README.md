@@ -31,9 +31,23 @@ This project is using the following tools:
 
 **Discord:** <https://discord.zelda64.dev>
 
-## Installation
+## Getting Started
+
+The Expansion Pak is required by default. While it's possible to use 4MB of memory, this is not recommended for mods (and untested) but technically possible by removing debug features.
+
+### Installation
 
 Instructions to build this project are available [here](INSTALLATION.md).
+
+Note: the [F3DEX3](https://github.com/HackerN64/F3DEX3) microcode is enabled by default. You will need a platform supporting LLE (like Ares or Parallel Launcher) to be able to use it. To turn it off set the ``ENABLE_F3DEX3`` define from ``config_graphics.h`` to ``false``, then run ``make clean`` and ``make``.
+
+### Modding
+
+HackerOoT features are listed in the config headers under ``include/config/``.
+
+This project includes an example scene, available if ``INCLUDE_EXAMPLE_SCENE`` is set to ``true``. It's accessible from the map select.
+
+This also includes an example cutscene, playable in the example scene when holding ``L`` + ``R`` and pressing ``A``.
 
 ## Contributing
 
@@ -46,6 +60,7 @@ Most discussions happen on our [Discord Server](https://discord.gg/brETAakcXr), 
 
 List of every HackerOoT contributors, from most recent to oldest contribution:
 
+- Reonu
 - Thar0
 - recardo-7
 - HailToDodongo
