@@ -15,7 +15,7 @@
 /**
  * Enable mempak-related code
  */
-#define ENABLE_MEMPAK false
+#define ENABLE_MEMPAK true
 
 // Configure dialogue print speed (1 is vanilla)
 // #define DIALOGUE_PRINT_SPEED 2
@@ -23,7 +23,7 @@
 // Configure block push speed multiplier
 #define BLOCK_PUSH_SPEED 1.0f
 
-// Enables the beep sound at low health (vanilla behavior)
+// Enables the beep sound at low health (vanilFla behavior)
 #define ENABLE_LOW_HEALTH_BEEP true
 
 // Make the Bunny Hood Mask behave like in Majora's Mask where it increases Link's speed when equipped.
@@ -54,12 +54,12 @@
 /**
  * Skips the N64 logo and boots directly into the game if defined (may already be skipped by the options below)
  */
-#define SKIP_N64_BOOT_LOGO true
+#define SKIP_N64_BOOT_LOGO false
 
 /**
  * Use Majora's Masks' N64 Logo logic
 */
-#define MM_N64_BOOT_LOGO false
+#define MM_N64_BOOT_LOGO true
 
 /*
  * Fix climbing on vine edges

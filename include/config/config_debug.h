@@ -78,7 +78,7 @@
 /**
  * Include example scene
 */
-#define INCLUDE_EXAMPLE_SCENE true
+#define INCLUDE_EXAMPLE_SCENE false
 
 /**
  * Enable motion blur debug

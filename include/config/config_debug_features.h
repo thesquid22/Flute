@@ -50,7 +50,7 @@
 /**** [FRAMERATE OPTIONS] ****/
 // TODO: check for frame advance for drawing, improve how it works
 // ``ARE_FRAMERATE_OPTIONS_ENABLED``
-#define ENABLE_FRAMERATE_OPTIONS false
+#define ENABLE_FRAMERATE_OPTIONS true
 
 /**** [MAP SELECT] ****/
 // ``IS_MAP_SELECT_ENABLED``
@@ -62,7 +62,7 @@
 
 /**** [TEST SCENES] ****/
 // ``CAN_INCLUDE_TEST_SCENES``
-#define INCLUDE_TEST_SCENES false
+#define INCLUDE_TEST_SCENES true
 
 // -------------------------------------------
 
