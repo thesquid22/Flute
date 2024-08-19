@@ -297,7 +297,7 @@ EnvLightSettings example_scene_header01_lightSettings[4] = {
 SceneCmd example_scene_header02[] = {
     SCENE_CMD_COL_HEADER(&example_scene_collisionHeader),
     SCENE_CMD_ROOM_LIST(1, example_scene_roomList),
-    SCENE_CMD_SOUND_SETTINGS(0x00, 0x00, NA_BGM_BOSS),
+    SCENE_CMD_SOUND_SETTINGS(0x00, 0x00, NA_BGM_FIELD_INIT),
     SCENE_CMD_MISC_SETTINGS(0x00, 0x00),
     SCENE_CMD_SPECIAL_FILES(0x00, OBJECT_GAMEPLAY_DANGEON_KEEP),
     SCENE_CMD_SKYBOX_SETTINGS(0x01, 0x00, LIGHT_MODE_TIME),

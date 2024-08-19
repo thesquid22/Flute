@@ -65,6 +65,7 @@ graphs/
 .extracted-assets.json
 extracted/
 !mod_assets/*
+!mod_assets/objects/object_link_boy/*.png
 
 # Docs
 !docs/tutorial/
